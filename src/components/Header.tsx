@@ -1,7 +1,19 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ASSETS, STAY_TYPES } from '../utils/constants';
 import { useStay } from '../context/StayContext';
-import { Plus, Share2, Heart, FolderKanban, Sparkles, ChevronDown } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import {
+  Plus,
+  Share2,
+  Heart,
+  FolderKanban,
+  ChevronDown,
+  LogOut,
+  User as UserIcon,
+  Shield,
+  Sparkles,
+  Lock
+} from 'lucide-react';
 
 interface HeaderProps {
   onOpenNewStay: () => void;
@@ -16,8 +28,23 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenShare,
   onOpenSupport
 }) => {
-  const { activeStay } = useStay();
+  const { activeStay, isPersonalMode } = useStay();
+  const { user, userProfile, role, isAuthenticated, openAuthModal, signOut } = useAuth();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
   const stayTypeMeta = activeStay ? STAY_TYPES[activeStay.type] || STAY_TYPES.custom : null;
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header id="stayplan-main-header" className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-2xs">
@@ -45,9 +72,21 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-xl sm:text-2xl font-extrabold text-stone-900 tracking-tight font-sans">
                   Stay<span className="text-amber-600">Plan</span>
                 </h1>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-stone-100 text-stone-600 border border-stone-200">
-                  Short Stay
-                </span>
+                {isAuthenticated ? (
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                    <span>My Workspace</span>
+                  </span>
+                ) : (
+                  <span
+                    onClick={() => openAuthModal('Log masuk untuk mula mencipta pelan stay peribadi anda.')}
+                    className="cursor-pointer hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition-colors"
+                    title="Mod Eksplorasi. Klik untuk log masuk."
+                  >
+                    <Lock className="w-2.5 h-2.5 text-amber-600" />
+                    <span>Eksplorasi (Showcase)</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-stone-500 font-medium hidden md:block">
                 “Plan the stay, not just the calendar.”
@@ -78,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Action Buttons & Auth Gate */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* All Stays Button */}
             <button
@@ -99,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Kongsi ke WhatsApp atau Cetak"
             >
               <Share2 className="w-4 h-4 text-emerald-600" />
-              <span className="hidden sm:inline">Kongsi / WhatsApp</span>
+              <span className="hidden sm:inline">Kongsi</span>
             </button>
 
             {/* New Stay Button */}
@@ -112,6 +151,109 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Stay Baru</span>
             </button>
 
+            {/* Auth Gate: User Profile / Sign-in Button */}
+            {isAuthenticated && user ? (
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  id="user-profile-menu-btn"
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-2xl bg-stone-100 hover:bg-stone-200/80 border border-stone-200 transition-all"
+                >
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || 'User'}
+                      className="w-7 h-7 rounded-full object-cover border border-stone-300"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-amber-600 text-white font-bold text-xs flex items-center justify-center">
+                      {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                  )}
+                  <div className="hidden sm:block text-left">
+                    <p className="text-xs font-bold text-stone-800 truncate max-w-[100px]">
+                      {user.displayName || user.email?.split('@')[0]}
+                    </p>
+                    <p className="text-[10px] text-amber-700 font-semibold uppercase tracking-wider">
+                      {role}
+                    </p>
+                  </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-stone-500 hidden sm:block" />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-stone-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-4 py-3 border-b border-stone-100">
+                      <p className="text-xs font-bold text-stone-900 truncate">
+                        {user.displayName || 'Pengguna StayPlan'}
+                      </p>
+                      <p className="text-[11px] text-stone-500 truncate">{user.email}</p>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-stone-100 text-stone-700 border border-stone-200 uppercase inline-flex items-center gap-1">
+                          <Shield className="w-2.5 h-2.5 text-amber-600" />
+                          Role: {role}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-1">
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          onOpenStayList();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-50 rounded-xl transition-colors text-left"
+                      >
+                        <FolderKanban className="w-4 h-4 text-stone-500" />
+                        <span>Stay Peribadi Saya</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          signOut();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors text-left"
+                      >
+                        <LogOut className="w-4 h-4 text-rose-500" />
+                        <span>Log Keluar</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                id="header-login-btn"
+                onClick={() => openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda.')}
+                className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 text-xs font-bold text-stone-800 bg-white hover:bg-stone-50 border border-stone-300 rounded-xl shadow-2xs hover:shadow-xs transition-all"
+              >
+                {/* Google Icon */}
+                <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+                <span className="hidden sm:inline">Log Masuk Google</span>
+                <span className="sm:hidden">Log Masuk</span>
+              </button>
+            )}
+
             {/* Support Button */}
             <button
               id="header-support-btn"
@@ -120,7 +262,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Sokong Pembangunan StayPlan"
             >
               <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500 animate-pulse" />
-              <span className="hidden md:inline">Support</span>
+              <span className="hidden lg:inline">Support</span>
             </button>
           </div>
 

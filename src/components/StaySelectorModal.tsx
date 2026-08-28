@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Plus, Calendar, MapPin, Check, Edit2, Copy, Trash2, Download, Upload, RotateCcw } from 'lucide-react';
+import { X, Plus, Calendar, MapPin, Check, Edit2, Copy, Trash2, Download, Lock, Sparkles } from 'lucide-react';
 import { useStay } from '../context/StayContext';
+import { useAuth } from '../context/AuthContext';
 import { STAY_TYPES } from '../utils/constants';
 import { formatDateRange } from '../utils/formatters';
 import { Stay } from '../types';
@@ -25,12 +26,10 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
     deleteStay,
     duplicateStay,
     exportDataJson,
-    importDataJson,
-    resetToDefaults
+    isPersonalMode
   } = useStay();
 
-  const [importError, setImportError] = useState(false);
-  const [importSuccess, setImportSuccess] = useState(false);
+  const { isAuthenticated, openAuthModal } = useAuth();
 
   if (!isOpen) return null;
 
@@ -45,33 +44,20 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        const ok = importDataJson(content);
-        if (ok) {
-          setImportSuccess(true);
-          setImportError(false);
-          setTimeout(() => setImportSuccess(false), 3000);
-        } else {
-          setImportError(true);
-          setTimeout(() => setImportError(false), 3000);
-        }
-      }
-    };
-    reader.readAsText(file);
+  const handleCreateNew = () => {
+    if (!isAuthenticated) {
+      openAuthModal('Log masuk dengan Google untuk mencipta pelan stay peribadi anda.');
+      return;
+    }
+    onClose();
+    onNewStay();
   };
 
   return (
     <div id="stay-selector-backdrop" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         id="stay-selector-container"
-        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-stone-200 p-6 md:p-8 space-y-6"
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl border border-stone-200 p-6 md:p-8 space-y-6"
       >
         {/* Close Button */}
         <button
@@ -84,25 +70,59 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
         </button>
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-extrabold text-stone-900 tracking-tight">Senarai StayPlan Anda</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-stone-900 tracking-tight">
+                {isPersonalMode ? 'Koleksi StayPlan Peribadi' : 'Eksplorasi StayPlan (Showcase)'}
+              </h2>
+              {isPersonalMode ? (
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-100 text-emerald-800">
+                  Peribadi
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-800">
+                  Pratonton
+                </span>
+              )}
+            </div>
             <p className="text-xs text-stone-500 mt-0.5">
-              Pilih perancangan short stay aktif atau buat perancangan baharu.
+              {isPersonalMode
+                ? 'Semua perancangan short stay yang anda miliki dan disimpan di awan.'
+                : 'Contoh struktur StayPlan. Log masuk untuk menyimpan pelan peribadi anda.'}
             </p>
           </div>
+
           <button
             id="modal-create-stay-btn"
-            onClick={() => {
-              onClose();
-              onNewStay();
-            }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-all"
+            onClick={handleCreateNew}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-all shrink-0 self-start sm:self-auto"
           >
             <Plus className="w-4 h-4" />
             <span>Stay Baharu</span>
           </button>
         </div>
+
+        {/* Auth prompt banner if unauthenticated */}
+        {!isAuthenticated && (
+          <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
+            <div className="flex items-start gap-2.5">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Ingin cipta pelan peribadi sebenar?</p>
+                <p className="text-stone-600 text-[11px]">
+                  Log masuk dengan akaun Google anda untuk mula mencipta dan menyimpan ruang StayPlan anda sendiri.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda.')}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 self-start sm:self-auto transition-colors"
+            >
+              Log Masuk Google
+            </button>
+          </div>
+        )}
 
         {/* Stays List */}
         <div className="space-y-3">
@@ -165,8 +185,13 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                       Buka
                     </button>
                   )}
+
                   <button
                     onClick={() => {
+                      if (!isAuthenticated) {
+                        openAuthModal('Log masuk dengan Google untuk menyunting maklumat Stay.');
+                        return;
+                      }
                       onClose();
                       onEditStay(stay);
                     }}
@@ -175,14 +200,22 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
+
                   <button
-                    onClick={() => duplicateStay(stay.id)}
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        openAuthModal('Log masuk dengan Google untuk menduplikasi pelan Stay.');
+                        return;
+                      }
+                      duplicateStay(stay.id);
+                    }}
                     title="Salin / Duplikasi Stay"
                     className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-lg transition-colors"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
-                  {stays.length > 1 && (
+
+                  {isPersonalMode && (
                     <button
                       onClick={() => {
                         if (confirm(`Adakah anda pasti mahu memadam "${stay.title}"?`)) {
@@ -199,47 +232,37 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
               </div>
             );
           })}
-        </div>
 
-        {/* Data Backup & Restore */}
-        <div className="pt-4 border-t border-stone-200 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <span className="font-bold text-stone-700">Simpanan Sandaran & Import Data:</span>
-            <div className="flex items-center gap-2">
+          {stays.length === 0 && (
+            <div className="p-8 text-center bg-stone-50 rounded-2xl border border-dashed border-stone-200 space-y-3">
+              <Sparkles className="w-8 h-8 text-amber-500 mx-auto" />
+              <div>
+                <p className="text-sm font-bold text-stone-800">Belum Ada Stay Peribadi</p>
+                <p className="text-xs text-stone-500 mt-1">
+                  Mulakan dengan mencipta perancangan short stay pertama anda.
+                </p>
+              </div>
               <button
-                type="button"
-                onClick={handleExport}
-                className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-lg"
+                onClick={handleCreateNew}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors"
               >
-                <Download className="w-3.5 h-3.5" />
-                Eksport JSON
-              </button>
-              <label className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-lg cursor-pointer">
-                <Upload className="w-3.5 h-3.5" />
-                Import JSON
-                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Tetapkan semula kepada contoh asal? Data yang belum dieksport akan hilang.')) {
-                    resetToDefaults();
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                title="Reset ke Contoh Asal"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
+                + Cipta Stay Pertama
               </button>
             </div>
-          </div>
+          )}
+        </div>
 
-          {importSuccess && (
-            <p className="text-xs text-emerald-600 font-medium">Data berjaya diimport!</p>
-          )}
-          {importError && (
-            <p className="text-xs text-rose-600 font-medium">Ralat: Format fail JSON tidak sah.</p>
-          )}
+        {/* Data Backup */}
+        <div className="pt-4 border-t border-stone-200 flex items-center justify-between text-xs text-stone-600">
+          <span>Sandaran data peribadi anda:</span>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-lg transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Eksport JSON
+          </button>
         </div>
       </div>
     </div>

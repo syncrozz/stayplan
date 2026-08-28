@@ -1,3 +1,15 @@
+export type UserRole = 'USER' | 'ADMIN' | 'MASTER_ADMIN';
+
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  role: UserRole;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type StayType =
   | 'balik_kampung'
   | 'family_stay'
@@ -14,6 +26,7 @@ export type ActivityPriority = 'must_do' | 'optional' | 'food' | 'rest' | 'logis
 export interface AgendaItem {
   id: string;
   stayId: string;
+  userId?: string;
   dayNumber: number; // 1, 2, 3, 4...
   timeSlot: TimeSlot;
   timeSpecific?: string; // e.g. "08:30 AM" or "Lepas Subuh"
@@ -31,6 +44,7 @@ export type ChecklistCategory = 'essentials' | 'house_homestay' | 'food_gifts' |
 export interface ChecklistItem {
   id: string;
   stayId: string;
+  userId?: string;
   category: ChecklistCategory;
   text: string;
   isCompleted: boolean;
@@ -38,6 +52,7 @@ export interface ChecklistItem {
 
 export interface Stay {
   id: string;
+  userId?: string;
   title: string;
   type: StayType;
   startDate: string;

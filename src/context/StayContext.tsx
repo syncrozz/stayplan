@@ -1,8 +1,20 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Stay, AgendaItem, ChecklistItem, StayData } from '../types';
-import { INITIAL_STAYS, INITIAL_AGENDA_ITEMS, INITIAL_CHECKLIST_ITEMS } from '../data/defaultStays';
-
-const STORAGE_KEY = 'stayplan_data_v1';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import { Stay, AgendaItem, ChecklistItem, StayType } from '../types';
+import { SHOWCASE_STAYS, SHOWCASE_AGENDA_ITEMS, SHOWCASE_CHECKLIST_ITEMS } from '../data/defaultStays';
+import { useAuth } from './AuthContext';
+import { db } from '../lib/firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  getDocs,
+  writeBatch
+} from 'firebase/firestore';
 
 interface StayContextType {
   stays: Stay[];
@@ -13,287 +25,481 @@ interface StayContextType {
   activeAgendaItems: AgendaItem[];
   checklistItems: ChecklistItem[];
   activeChecklistItems: ChecklistItem[];
-  addStay: (stay: Omit<Stay, 'id' | 'createdAt' | 'updatedAt'>) => string;
-  updateStay: (id: string, updates: Partial<Stay>) => void;
-  deleteStay: (id: string) => void;
-  duplicateStay: (id: string) => void;
-  addAgendaItem: (item: Omit<AgendaItem, 'id'>) => string;
-  updateAgendaItem: (id: string, updates: Partial<AgendaItem>) => void;
-  deleteAgendaItem: (id: string) => void;
-  toggleAgendaComplete: (id: string) => void;
-  addChecklistItem: (item: Omit<ChecklistItem, 'id'>) => string;
-  toggleChecklistComplete: (id: string) => void;
-  deleteChecklistItem: (id: string) => void;
-  resetToDefaults: () => void;
+  isPersonalMode: boolean;
+  isLoadingStays: boolean;
+  addStay: (stay: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<string>;
+  updateStay: (id: string, updates: Partial<Stay>) => Promise<void>;
+  deleteStay: (id: string) => Promise<void>;
+  duplicateStay: (id: string) => Promise<void>;
+  addAgendaItem: (item: Omit<AgendaItem, 'id' | 'userId'>) => Promise<string>;
+  updateAgendaItem: (id: string, updates: Partial<AgendaItem>) => Promise<void>;
+  deleteAgendaItem: (id: string) => Promise<void>;
+  toggleAgendaComplete: (id: string) => Promise<void>;
+  addChecklistItem: (item: Omit<ChecklistItem, 'id' | 'userId'>) => Promise<string>;
+  toggleChecklistComplete: (id: string) => Promise<void>;
+  deleteChecklistItem: (id: string) => Promise<void>;
+  createFromStarterTemplate: (templateType: StayType) => Promise<string>;
   exportDataJson: () => string;
-  importDataJson: (jsonString: string) => boolean;
 }
 
 const StayContext = createContext<StayContextType | undefined>(undefined);
 
 export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [data, setData] = useState<StayData>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && Array.isArray(parsed.stays) && parsed.stays.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load StayPlan from localStorage:', e);
-    }
-    return {
-      stays: INITIAL_STAYS,
-      agendaItems: INITIAL_AGENDA_ITEMS,
-      checklistItems: INITIAL_CHECKLIST_ITEMS,
-      activeStayId: INITIAL_STAYS[0].id
-    };
-  });
+  const { user, requireAuth } = useAuth();
 
-  // Save changes to localStorage
+  // State for authenticated user stays
+  const [userStays, setUserStays] = useState<Stay[]>([]);
+  const [userAgendaItems, setUserAgendaItems] = useState<AgendaItem[]>([]);
+  const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>([]);
+  const [activeStayId, setActiveStayIdState] = useState<string | null>(null);
+  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(false);
+
+  const isPersonalMode = !!user;
+
+  // 1. Subscribe to User's Stays collection when authenticated
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Failed to save StayPlan data:', e);
+    if (!user) {
+      setUserStays([]);
+      setUserAgendaItems([]);
+      setUserChecklistItems([]);
+      setActiveStayIdState(SHOWCASE_STAYS[0].id);
+      setIsLoadingStays(false);
+      return;
     }
-  }, [data]);
+
+    setIsLoadingStays(true);
+    const staysRef = collection(db, 'users', user.uid, 'stays');
+    const staysQuery = query(staysRef, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(
+      staysQuery,
+      (snapshot) => {
+        const fetchedStays: Stay[] = [];
+        snapshot.forEach((docSnap) => {
+          fetchedStays.push(docSnap.data() as Stay);
+        });
+        setUserStays(fetchedStays);
+
+        setActiveStayIdState((prevActiveId) => {
+          if (fetchedStays.length === 0) return null;
+          if (prevActiveId && fetchedStays.some((s) => s.id === prevActiveId)) {
+            return prevActiveId;
+          }
+          return fetchedStays[0].id;
+        });
+
+        setIsLoadingStays(false);
+      },
+      (error) => {
+        console.error('Error listening to user stays from Firestore:', error);
+        setIsLoadingStays(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 2. Subscribe to Agenda & Checklist of the currently active stay
+  useEffect(() => {
+    if (!user || !activeStayId) {
+      if (user) {
+        setUserAgendaItems([]);
+        setUserChecklistItems([]);
+      }
+      return;
+    }
+
+    const agendaRef = collection(db, 'users', user.uid, 'stays', activeStayId, 'agendaItems');
+    const checklistRef = collection(db, 'users', user.uid, 'stays', activeStayId, 'checklistItems');
+
+    const unsubAgenda = onSnapshot(
+      agendaRef,
+      (snapshot) => {
+        const items: AgendaItem[] = [];
+        snapshot.forEach((d) => items.push(d.data() as AgendaItem));
+        setUserAgendaItems(items);
+      },
+      (err) => console.error('Error fetching agenda items:', err)
+    );
+
+    const unsubChecklist = onSnapshot(
+      checklistRef,
+      (snapshot) => {
+        const items: ChecklistItem[] = [];
+        snapshot.forEach((d) => items.push(d.data() as ChecklistItem));
+        setUserChecklistItems(items);
+      },
+      (err) => console.error('Error fetching checklist items:', err)
+    );
+
+    return () => {
+      unsubAgenda();
+      unsubChecklist();
+    };
+  }, [user, activeStayId]);
+
+  // Determine current active lists based on mode
+  const stays = useMemo(() => {
+    return isPersonalMode ? userStays : SHOWCASE_STAYS;
+  }, [isPersonalMode, userStays]);
 
   const activeStay = useMemo(() => {
-    if (!data.stays || data.stays.length === 0) return null;
-    const found = data.stays.find((s) => s.id === data.activeStayId);
-    return found || data.stays[0];
-  }, [data.stays, data.activeStayId]);
+    if (!stays || stays.length === 0) return null;
+    const found = stays.find((s) => s.id === activeStayId);
+    return found || stays[0] || null;
+  }, [stays, activeStayId]);
 
   const activeAgendaItems = useMemo(() => {
     if (!activeStay) return [];
-    return data.agendaItems.filter((item) => item.stayId === activeStay.id);
-  }, [data.agendaItems, activeStay]);
+    if (isPersonalMode) {
+      return userAgendaItems.filter((i) => i.stayId === activeStay.id);
+    }
+    return SHOWCASE_AGENDA_ITEMS.filter((i) => i.stayId === activeStay.id);
+  }, [isPersonalMode, activeStay, userAgendaItems]);
 
   const activeChecklistItems = useMemo(() => {
     if (!activeStay) return [];
-    return data.checklistItems.filter((item) => item.stayId === activeStay.id);
-  }, [data.checklistItems, activeStay]);
+    if (isPersonalMode) {
+      return userChecklistItems.filter((i) => i.stayId === activeStay.id);
+    }
+    return SHOWCASE_CHECKLIST_ITEMS.filter((i) => i.stayId === activeStay.id);
+  }, [isPersonalMode, activeStay, userChecklistItems]);
 
   const setActiveStayId = (id: string) => {
-    setData((prev) => ({ ...prev, activeStayId: id }));
+    setActiveStayIdState(id);
   };
 
-  const addStay = (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt'>): string => {
-    const id = 'stay-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-    const newStay: Stay = {
-      ...newStayData,
-      id,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
+  // --- ACTIONS (Strictly requiring Authenticated Google User) ---
 
-    // Pre-populate some starter agenda slots for each day
-    const starterAgenda: AgendaItem[] = [];
-    for (let day = 1; day <= newStay.durationDays; day++) {
-      if (day === 1) {
-        starterAgenda.push({
-          id: `agenda-${Date.now()}-${day}-1`,
-          stayId: id,
-          dayNumber: 1,
-          timeSlot: 'morning',
-          timeSpecific: '09:00 AM',
-          title: 'Ketibaan & Sapaan / Check-in',
-          description: 'Tiba di lokasi, susun barang & sembang pembuka.',
-          priority: 'must_do',
-          isCompleted: false
-        });
-      } else if (day === newStay.durationDays) {
-        starterAgenda.push({
-          id: `agenda-${Date.now()}-${day}-1`,
-          stayId: id,
-          dayNumber: day,
-          timeSlot: 'morning',
-          timeSpecific: '10:00 AM',
-          title: 'Kemas Barang & Bersalaman / Check-out',
-          description: 'Periksa barang elak tertinggal dan ucap selamat tinggal.',
-          priority: 'must_do',
-          isCompleted: false
-        });
+  const addStay = useCallback(
+    async (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>): Promise<string> => {
+      if (!user) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk mencipta dan menyimpan StayPlan peribadi.');
+        return '';
       }
-    }
 
-    // Pre-populate starter checklist
-    const starterChecklist: ChecklistItem[] = [
-      { id: `chk-${Date.now()}-1`, stayId: id, category: 'essentials', text: 'Pakaian & keperluan harian', isCompleted: false },
-      { id: `chk-${Date.now()}-2`, stayId: id, category: 'essentials', text: 'Pengecas telefon & ubatan peribadi', isCompleted: false },
-      { id: `chk-${Date.now()}-3`, stayId: id, category: 'food_gifts', text: 'Buah tangan / snek perjalanan', isCompleted: false }
-    ];
+      const stayCol = collection(db, 'users', user.uid, 'stays');
+      const stayDoc = doc(stayCol);
+      const stayId = stayDoc.id;
 
-    setData((prev) => ({
-      ...prev,
-      stays: [newStay, ...prev.stays],
-      agendaItems: [...prev.agendaItems, ...starterAgenda],
-      checklistItems: [...prev.checklistItems, ...starterChecklist],
-      activeStayId: id
-    }));
-
-    return id;
-  };
-
-  const updateStay = (id: string, updates: Partial<Stay>) => {
-    setData((prev) => ({
-      ...prev,
-      stays: prev.stays.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: Date.now() } : s))
-    }));
-  };
-
-  const deleteStay = (id: string) => {
-    setData((prev) => {
-      const remainingStays = prev.stays.filter((s) => s.id !== id);
-      const nextActiveId = remainingStays.length > 0 ? remainingStays[0].id : null;
-      return {
-        ...prev,
-        stays: remainingStays,
-        agendaItems: prev.agendaItems.filter((item) => item.stayId !== id),
-        checklistItems: prev.checklistItems.filter((item) => item.stayId !== id),
-        activeStayId: prev.activeStayId === id ? nextActiveId : prev.activeStayId
+      const newStay: Stay = {
+        ...newStayData,
+        id: stayId,
+        userId: user.uid,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       };
-    });
-  };
 
-  const duplicateStay = (id: string) => {
-    const original = data.stays.find((s) => s.id === id);
-    if (!original) return;
+      await setDoc(stayDoc, newStay);
 
-    const newId = 'stay-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-    const duplicatedStay: Stay = {
-      ...original,
-      id: newId,
-      title: `${original.title} (Salinan)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
+      // Starter essentials checklist
+      const starterChecklist: Array<Omit<ChecklistItem, 'id'>> = [
+        { stayId, userId: user.uid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false },
+        { stayId, userId: user.uid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false },
+        { stayId, userId: user.uid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false }
+      ];
 
-    const originalAgendas = data.agendaItems.filter((a) => a.stayId === id);
-    const duplicatedAgendas: AgendaItem[] = originalAgendas.map((a, idx) => ({
-      ...a,
-      id: `agenda-${Date.now()}-${idx}`,
-      stayId: newId,
-      isCompleted: false
-    }));
+      const batch = writeBatch(db);
+      starterChecklist.forEach((item) => {
+        const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'));
+        batch.set(itemRef, { ...item, id: itemRef.id });
+      });
 
-    const originalChecklists = data.checklistItems.filter((c) => c.stayId === id);
-    const duplicatedChecklists: ChecklistItem[] = originalChecklists.map((c, idx) => ({
-      ...c,
-      id: `chk-${Date.now()}-${idx}`,
-      stayId: newId,
-      isCompleted: false
-    }));
+      // Day 1 Starter Agenda
+      const day1Ref = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'));
+      batch.set(day1Ref, {
+        id: day1Ref.id,
+        stayId,
+        userId: user.uid,
+        dayNumber: 1,
+        timeSlot: 'afternoon',
+        timeSpecific: '03:00 PM',
+        title: 'Ketibaan & Daftar Masuk',
+        description: 'Tiba di lokasi, susun barang dan rehat santai.',
+        priority: 'must_do',
+        isCompleted: false
+      });
 
-    setData((prev) => ({
-      ...prev,
-      stays: [duplicatedStay, ...prev.stays],
-      agendaItems: [...prev.agendaItems, ...duplicatedAgendas],
-      checklistItems: [...prev.checklistItems, ...duplicatedChecklists],
-      activeStayId: newId
-    }));
-  };
+      await batch.commit();
+      setActiveStayIdState(stayId);
+      return stayId;
+    },
+    [user, requireAuth]
+  );
 
-  const addAgendaItem = (item: Omit<AgendaItem, 'id'>): string => {
-    const id = 'agenda-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-    const newItem: AgendaItem = { ...item, id };
-    setData((prev) => ({
-      ...prev,
-      agendaItems: [...prev.agendaItems, newItem]
-    }));
-    return id;
-  };
-
-  const updateAgendaItem = (id: string, updates: Partial<AgendaItem>) => {
-    setData((prev) => ({
-      ...prev,
-      agendaItems: prev.agendaItems.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    }));
-  };
-
-  const deleteAgendaItem = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      agendaItems: prev.agendaItems.filter((item) => item.id !== id)
-    }));
-  };
-
-  const toggleAgendaComplete = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      agendaItems: prev.agendaItems.map((item) =>
-        item.id === id ? { ...item, isCompleted: !item.isCompleted } : item
-      )
-    }));
-  };
-
-  const addChecklistItem = (item: Omit<ChecklistItem, 'id'>): string => {
-    const id = 'chk-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-    const newItem: ChecklistItem = { ...item, id };
-    setData((prev) => ({
-      ...prev,
-      checklistItems: [...prev.checklistItems, newItem]
-    }));
-    return id;
-  };
-
-  const toggleChecklistComplete = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      checklistItems: prev.checklistItems.map((item) =>
-        item.id === id ? { ...item, isCompleted: !item.isCompleted } : item
-      )
-    }));
-  };
-
-  const deleteChecklistItem = (id: string) => {
-    setData((prev) => ({
-      ...prev,
-      checklistItems: prev.checklistItems.filter((item) => item.id !== id)
-    }));
-  };
-
-  const resetToDefaults = () => {
-    const resetData: StayData = {
-      stays: INITIAL_STAYS,
-      agendaItems: INITIAL_AGENDA_ITEMS,
-      checklistItems: INITIAL_CHECKLIST_ITEMS,
-      activeStayId: INITIAL_STAYS[0].id
-    };
-    setData(resetData);
-  };
-
-  const exportDataJson = (): string => {
-    return JSON.stringify(data, null, 2);
-  };
-
-  const importDataJson = (jsonString: string): boolean => {
-    try {
-      const parsed = JSON.parse(jsonString);
-      if (parsed && Array.isArray(parsed.stays) && parsed.stays.length > 0) {
-        setData(parsed);
-        return true;
+  const updateStay = useCallback(
+    async (id: string, updates: Partial<Stay>) => {
+      if (!user) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk mengemas kini maklumat Stay.');
+        return;
       }
-    } catch (err) {
-      console.error('Invalid JSON imported', err);
-    }
-    return false;
-  };
+      const stayRef = doc(db, 'users', user.uid, 'stays', id);
+      await updateDoc(stayRef, { ...updates, updatedAt: Date.now() });
+    },
+    [user, requireAuth]
+  );
+
+  const deleteStay = useCallback(
+    async (id: string) => {
+      if (!user) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk memadam Stay.');
+        return;
+      }
+
+      // Delete subcollections
+      const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
+      const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
+
+      const batch = writeBatch(db);
+      agendaSnap.forEach((d) => batch.delete(d.ref));
+      checklistSnap.forEach((d) => batch.delete(d.ref));
+      batch.delete(doc(db, 'users', user.uid, 'stays', id));
+      await batch.commit();
+
+      const remaining = userStays.filter((s) => s.id !== id);
+      setActiveStayIdState(remaining.length > 0 ? remaining[0].id : null);
+    },
+    [user, userStays, requireAuth]
+  );
+
+  const duplicateStay = useCallback(
+    async (id: string) => {
+      if (!user) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk menduplikasi pelan Stay.');
+        return;
+      }
+
+      const target = userStays.find((s) => s.id === id);
+      if (!target) return;
+
+      const newStayRef = doc(collection(db, 'users', user.uid, 'stays'));
+      const newStayId = newStayRef.id;
+
+      const duplicatedStay: Stay = {
+        ...target,
+        id: newStayId,
+        userId: user.uid,
+        title: `${target.title} (Salinan)`,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      const batch = writeBatch(db);
+      batch.set(newStayRef, duplicatedStay);
+
+      const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
+      agendaSnap.forEach((docSnap) => {
+        const item = docSnap.data() as AgendaItem;
+        const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'agendaItems'));
+        batch.set(itemRef, {
+          ...item,
+          id: itemRef.id,
+          stayId: newStayId,
+          userId: user.uid,
+          isCompleted: false
+        });
+      });
+
+      const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
+      checklistSnap.forEach((docSnap) => {
+        const item = docSnap.data() as ChecklistItem;
+        const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'checklistItems'));
+        batch.set(itemRef, {
+          ...item,
+          id: itemRef.id,
+          stayId: newStayId,
+          userId: user.uid,
+          isCompleted: false
+        });
+      });
+
+      await batch.commit();
+      setActiveStayIdState(newStayId);
+    },
+    [user, userStays, requireAuth]
+  );
+
+  const addAgendaItem = useCallback(
+    async (item: Omit<AgendaItem, 'id' | 'userId'>): Promise<string> => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk menambah aktiviti ke agenda anda.');
+        return '';
+      }
+
+      const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
+      const docRef = doc(colRef);
+      const newItem: AgendaItem = {
+        ...item,
+        id: docRef.id,
+        stayId: activeStay.id,
+        userId: user.uid
+      };
+
+      await setDoc(docRef, newItem);
+      return docRef.id;
+    },
+    [user, activeStay, requireAuth]
+  );
+
+  const updateAgendaItem = useCallback(
+    async (id: string, updates: Partial<AgendaItem>) => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk mengemas kini aktiviti.');
+        return;
+      }
+      const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+      await updateDoc(itemRef, updates);
+    },
+    [user, activeStay, requireAuth]
+  );
+
+  const deleteAgendaItem = useCallback(
+    async (id: string) => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk memadam aktiviti.');
+        return;
+      }
+      const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+      await deleteDoc(itemRef);
+    },
+    [user, activeStay, requireAuth]
+  );
+
+  const toggleAgendaComplete = useCallback(
+    async (id: string) => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk menanda aktiviti siap.');
+        return;
+      }
+      const existing = userAgendaItems.find((i) => i.id === id);
+      if (!existing) return;
+
+      const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+      await updateDoc(itemRef, { isCompleted: !existing.isCompleted });
+    },
+    [user, activeStay, userAgendaItems, requireAuth]
+  );
+
+  const addChecklistItem = useCallback(
+    async (item: Omit<ChecklistItem, 'id' | 'userId'>): Promise<string> => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk menambah item senarai semak.');
+        return '';
+      }
+
+      const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
+      const docRef = doc(colRef);
+      const newItem: ChecklistItem = {
+        ...item,
+        id: docRef.id,
+        stayId: activeStay.id,
+        userId: user.uid
+      };
+
+      await setDoc(docRef, newItem);
+      return docRef.id;
+    },
+    [user, activeStay, requireAuth]
+  );
+
+  const toggleChecklistComplete = useCallback(
+    async (id: string) => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk menanda senarai semak.');
+        return;
+      }
+      const existing = userChecklistItems.find((i) => i.id === id);
+      if (!existing) return;
+
+      const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
+      await updateDoc(itemRef, { isCompleted: !existing.isCompleted });
+    },
+    [user, activeStay, userChecklistItems, requireAuth]
+  );
+
+  const deleteChecklistItem = useCallback(
+    async (id: string) => {
+      if (!user || !activeStay) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk memadam item.');
+        return;
+      }
+      const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
+      await deleteDoc(itemRef);
+    },
+    [user, activeStay, requireAuth]
+  );
+
+  const createFromStarterTemplate = useCallback(
+    async (templateType: StayType): Promise<string> => {
+      if (!user) {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk memilih templat.');
+        return '';
+      }
+
+      let title = 'Pelan Percutian Saya';
+      let durationDays = 3;
+      let location = 'Destinasi Pilihan';
+
+      if (templateType === 'balik_kampung') {
+        title = 'Kepulangan Balik Kampung';
+        durationDays = 3;
+        location = 'Kampung Halaman';
+      } else if (templateType === 'homestay') {
+        title = 'Percutian Santai Homestay';
+        durationDays = 3;
+        location = 'Homestay Percutian';
+      } else if (templateType === 'weekend_getaway') {
+        title = 'Rehat Hujung Minggu (Weekend Getaway)';
+        durationDays = 2;
+        location = 'Resort / Staycation';
+      }
+
+      const today = new Date();
+      const startDate = today.toISOString().split('T')[0];
+      const end = new Date(Date.now() + (durationDays - 1) * 24 * 60 * 60 * 1000);
+      const endDate = end.toISOString().split('T')[0];
+
+      return await addStay({
+        title,
+        type: templateType,
+        startDate,
+        endDate,
+        durationDays,
+        location,
+        companions: [],
+        houseRules: []
+      });
+    },
+    [user, addStay, requireAuth]
+  );
+
+  const exportDataJson = useCallback((): string => {
+    return JSON.stringify(
+      {
+        userUid: user?.uid || null,
+        stays: isPersonalMode ? userStays : SHOWCASE_STAYS,
+        agendaItems: isPersonalMode ? userAgendaItems : SHOWCASE_AGENDA_ITEMS,
+        checklistItems: isPersonalMode ? userChecklistItems : SHOWCASE_CHECKLIST_ITEMS,
+        activeStayId
+      },
+      null,
+      2
+    );
+  }, [user, isPersonalMode, userStays, userAgendaItems, userChecklistItems, activeStayId]);
 
   return (
     <StayContext.Provider
       value={{
-        stays: data.stays,
+        stays,
         activeStay,
-        activeStayId: data.activeStayId,
+        activeStayId,
         setActiveStayId,
-        agendaItems: data.agendaItems,
+        agendaItems: isPersonalMode ? userAgendaItems : SHOWCASE_AGENDA_ITEMS,
         activeAgendaItems,
-        checklistItems: data.checklistItems,
+        checklistItems: isPersonalMode ? userChecklistItems : SHOWCASE_CHECKLIST_ITEMS,
         activeChecklistItems,
+        isPersonalMode,
+        isLoadingStays,
         addStay,
         updateStay,
         deleteStay,
@@ -305,9 +511,8 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addChecklistItem,
         toggleChecklistComplete,
         deleteChecklistItem,
-        resetToDefaults,
-        exportDataJson,
-        importDataJson
+        createFromStarterTemplate,
+        exportDataJson
       }}
     >
       {children}
