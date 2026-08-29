@@ -213,10 +213,10 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
               </div>
             </div>
 
-            {/* Priority / Category Selector */}
+            {/* Keutamaan Selector */}
             <div>
               <label className="block text-xs font-semibold text-stone-700 mb-1.5">
-                Kategori / Keutamaan
+                Keutamaan
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {(Object.keys(PRIORITY_CONFIG) as ActivityPriority[]).map((pKey) => {

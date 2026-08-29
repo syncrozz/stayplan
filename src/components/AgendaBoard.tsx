@@ -244,12 +244,12 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                 onChange={(e) => setPriorityFilter(e.target.value)}
                 className="px-2.5 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-xl text-stone-700 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500"
               >
-                <option value="all">Semua Jenis</option>
-                <option value="must_do">⭐ Wajib Sahaja</option>
-                <option value="optional">🌿 Pilihan Sahaja</option>
-                <option value="food">🍽️ Makan</option>
-                <option value="rest">☕ Rehat</option>
-                <option value="logistics">🚗 Logistik</option>
+                <option value="all">Semua Keutamaan</option>
+                <option value="must_do">Wajib Dicapai</option>
+                <option value="optional">Santai</option>
+                <option value="food">Makan</option>
+                <option value="rest">Rehat</option>
+                <option value="logistics">Perjalanan</option>
                 <option value="incomplete">Belum Selesai</option>
               </select>
             </div>

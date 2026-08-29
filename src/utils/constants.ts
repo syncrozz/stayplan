@@ -68,8 +68,8 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
   description: string;
 }> = {
   must_do: {
-    label: 'Wajib Dicapai ⭐',
-    shortLabel: 'Wajib',
+    label: 'Wajib Dicapai',
+    shortLabel: 'Wajib Dicapai',
     badgeClass: 'bg-amber-100 text-amber-900 border-amber-300 font-semibold',
     borderClass: 'border-l-4 border-l-amber-500',
     bgLight: 'bg-amber-50/70',
@@ -77,8 +77,8 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
     description: 'Aktiviti utama & penting (Mesti buat dalam stay ini)'
   },
   optional: {
-    label: 'Pilihan / Santai 🌴',
-    shortLabel: 'Pilihan',
+    label: 'Santai',
+    shortLabel: 'Santai',
     badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     borderClass: 'border-l-4 border-l-emerald-400',
     bgLight: 'bg-emerald-50/50',
@@ -86,7 +86,7 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
     description: 'Sekadar pilihan (Boleh ganti jika tak sempat atau penat)'
   },
   food: {
-    label: 'Makan / Santapan 🍽️',
+    label: 'Makan',
     shortLabel: 'Makan',
     badgeClass: 'bg-rose-100 text-rose-800 border-rose-300',
     borderClass: 'border-l-4 border-l-rose-400',
@@ -95,7 +95,7 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
     description: 'Sarapan, makan tengah hari, minum petang & makan malam'
   },
   rest: {
-    label: 'Rehat / Tidur ☕',
+    label: 'Rehat',
     shortLabel: 'Rehat',
     badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-300',
     borderClass: 'border-l-4 border-l-indigo-400',
@@ -104,8 +104,8 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
     description: 'Waktu santai rehatkan badan & luang masa tanpa terkejar'
   },
   logistics: {
-    label: 'Perjalanan / Urusan 🚗',
-    shortLabel: 'Logistik',
+    label: 'Perjalanan',
+    shortLabel: 'Perjalanan',
     badgeClass: 'bg-stone-200 text-stone-800 border-stone-300',
     borderClass: 'border-l-4 border-l-stone-400',
     bgLight: 'bg-stone-50',
