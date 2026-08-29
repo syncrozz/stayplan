@@ -16,7 +16,8 @@ export const AuthModal: React.FC = () => {
       await signInWithGoogle();
     } catch (err: any) {
       if (err?.code === 'auth/unauthorized-domain') {
-        setErrorMsg('Domain ini (stayplan.syncrozz.com) belum disenaraikan dalam Authorized Domains di Firebase Console.');
+        const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'stayplan.syncrozz.com';
+        setErrorMsg(`Domain semasa (${currentHostname}) belum dimasukkan dalam senarai 'Authorized Domains' di Firebase Console (projek: syncrozz-platform).`);
       } else if (err?.code !== 'auth/popup-closed-by-user') {
         setErrorMsg('Gagal log masuk dengan Google. Sila cuba lagi.');
       }

@@ -28,7 +28,6 @@ import {
   Plus,
   Lock,
   Compass,
-  ArrowRight,
   ShieldAlert
 } from 'lucide-react';
 
@@ -296,22 +295,13 @@ function StayPlanApp() {
       {/* Unauthenticated Mode Exploration Notification Banner */}
       {!isAuthenticated && (
         <div className="bg-amber-500/10 border-b border-amber-200/80">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-amber-950">
-            <div className="flex items-center gap-2">
-              <span className="p-1 rounded-md bg-amber-600 text-white shrink-0">
-                <Compass className="w-3.5 h-3.5" />
-              </span>
-              <span>
-                <strong>Mod Eksplorasi (Showcase):</strong> Anda sedang melihat contoh struktur StayPlan. Log masuk dengan Google untuk menyimpan pelan peribadi anda di awan.
-              </span>
-            </div>
-            <button
-              onClick={() => openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda.')}
-              className="inline-flex items-center gap-1.5 px-3 py-1 font-bold text-amber-900 bg-white hover:bg-amber-50 border border-amber-300 rounded-lg shrink-0 transition-colors shadow-2xs"
-            >
-              <span>Log Masuk Google</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center gap-2 text-xs text-amber-950">
+            <span className="p-1 rounded-md bg-amber-600 text-white shrink-0">
+              <Compass className="w-3.5 h-3.5" />
+            </span>
+            <span>
+              <strong>Mod Eksplorasi (Showcase):</strong> Anda sedang melihat contoh struktur StayPlan. Log masuk dengan Google untuk menyimpan pelan peribadi anda di awan.
+            </span>
           </div>
         </div>
       )}
