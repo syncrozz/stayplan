@@ -194,8 +194,8 @@ function StayPlanApp() {
     }
   };
 
-  // Loading indicator for auth & data sync
-  const isAppLoading = isAuthLoading || (isAuthenticated && isLoadingStays && !activeStay);
+  // Loading indicator for initial auth
+  const isAppLoading = isAuthLoading && !isAuthenticated;
   if (isAppLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-stone-50 text-stone-700">

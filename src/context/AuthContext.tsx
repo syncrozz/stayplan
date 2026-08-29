@@ -74,65 +74,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isGuest]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setIsGuest(false);
         try {
           localStorage.removeItem(GUEST_STORAGE_KEY);
         } catch {}
+        
         setUser(currentUser);
-        try {
-          const userRef = doc(db, 'users', currentUser.uid);
-          const snap = await getDoc(userRef);
+        // Provide immediate profile so UI doesn't block
+        setUserProfile({
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+          role: 'USER',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+        setIsLoading(false);
 
-          if (snap.exists()) {
-            const data = snap.data();
-            setUserProfile({
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName,
-              photoURL: currentUser.photoURL,
-              role: (data.role as UserRole) || 'USER',
-              createdAt: data.createdAt || Date.now(),
-              updatedAt: data.updatedAt || Date.now()
-            });
-          } else {
-            // New user registration - strictly assign role = 'USER'
-            const newProfile: UserProfile = {
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName,
-              photoURL: currentUser.photoURL,
-              role: 'USER',
-              createdAt: Date.now(),
-              updatedAt: Date.now()
-            };
-            await setDoc(userRef, {
-              ...newProfile,
-              createdAtServer: serverTimestamp()
-            });
-            setUserProfile(newProfile);
+        // Fetch/sync full profile with Firestore asynchronously in background
+        (async () => {
+          try {
+            const userRef = doc(db, 'users', currentUser.uid);
+            const snap = await getDoc(userRef);
+
+            if (snap.exists()) {
+              const data = snap.data();
+              setUserProfile({
+                uid: currentUser.uid,
+                email: currentUser.email,
+                displayName: currentUser.displayName,
+                photoURL: currentUser.photoURL,
+                role: (data.role as UserRole) || 'USER',
+                createdAt: data.createdAt || Date.now(),
+                updatedAt: data.updatedAt || Date.now()
+              });
+            } else {
+              // New user registration - strictly assign role = 'USER'
+              const newProfile: UserProfile = {
+                uid: currentUser.uid,
+                email: currentUser.email,
+                displayName: currentUser.displayName,
+                photoURL: currentUser.photoURL,
+                role: 'USER',
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+              };
+              await setDoc(userRef, {
+                ...newProfile,
+                createdAtServer: serverTimestamp()
+              });
+              setUserProfile(newProfile);
+            }
+          } catch (err) {
+            console.warn('Background user profile sync note:', err);
           }
-        } catch (err) {
-          console.error('Error fetching/creating user profile in Firestore:', err);
-          // Fallback profile with standard USER role
-          setUserProfile({
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            role: 'USER',
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          });
-        }
+        })();
       } else {
         if (!isGuest) {
           setUser(null);
           setUserProfile(null);
         }
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     return () => unsubscribe();
