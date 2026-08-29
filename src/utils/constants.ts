@@ -114,28 +114,24 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
   }
 };
 
-export const TIME_SLOTS: Record<TimeSlot, { label: string; period: string; icon: string; bgBadge: string }> = {
+export const TIME_SLOTS: Record<TimeSlot, { label: string; icon: string; bgBadge: string }> = {
   morning: {
     label: 'Pagi',
-    period: '07:00 AM – 12:00 PM',
     icon: '🌅',
     bgBadge: 'bg-amber-100/80 text-amber-900 border-amber-200'
   },
   afternoon: {
-    label: 'Tengah Hari / Petang',
-    period: '12:00 PM – 06:30 PM',
+    label: 'Petang',
     icon: '☀️',
     bgBadge: 'bg-orange-100/80 text-orange-900 border-orange-200'
   },
   evening: {
     label: 'Malam',
-    period: '07:00 PM – Selesai',
     icon: '🌙',
     bgBadge: 'bg-indigo-100/80 text-indigo-900 border-indigo-200'
   },
   flexible: {
-    label: 'Fleksibel / Bila-bila Masa',
-    period: 'Bebas ikut kelapangan',
+    label: 'Fleksibel',
     icon: '🍃',
     bgBadge: 'bg-teal-100/80 text-teal-900 border-teal-200'
   }

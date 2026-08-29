@@ -99,173 +99,191 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
         {/* Header */}
         <div>
           <h2 className="text-xl font-bold text-stone-900 tracking-tight">
-            {isEditing ? 'Kemaskini Aktiviti Agenda' : 'Tambah Aktiviti / Agenda'}
+            {isEditing ? 'Kemaskini Agenda' : 'Tambah Agenda Stay'}
           </h2>
           <p className="text-xs text-stone-500 mt-0.5">
-            Tentukan keutamaan (Wajib vs Pilihan vs Makan vs Rehat) untuk memastikan jadual tidak membebankan.
+            Rancang aktiviti ringkas mengikut waktu (Pagi, Petang, Malam) tanpa terikat jadual jam yang ketat.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Day & Slot Selection */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Hari Ke-
-              </label>
-              <select
-                value={dayNumber}
-                onChange={(e) => setDayNumber(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
-              >
-                {Array.from({ length: stay.durationDays || 3 }).map((_, idx) => (
-                  <option key={idx + 1} value={idx + 1}>
-                    Hari {idx + 1}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Waktu / Slot
-              </label>
-              <select
-                value={timeSlot}
-                onChange={(e) => setTimeSlot(e.target.value as TimeSlot)}
-                className="w-full px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
-              >
-                {(Object.keys(TIME_SLOTS) as TimeSlot[]).map((slotKey) => (
-                  <option key={slotKey} value={slotKey}>
-                    {TIME_SLOTS[slotKey].icon} {TIME_SLOTS[slotKey].label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Activity Title */}
+          {/* 1. Activity Title */}
           <div>
             <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1.5">
-              Tajuk Aktiviti <span className="text-rose-500">*</span>
+              Tajuk Agenda <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
               required
+              autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Cth: Makan Mee Bandung Muar / Sembang Kopi Bersama Tok"
-              className="w-full px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-semibold"
+              placeholder="Cth: Pergi Pantai / Makan Nasi Dagang / Sembang Kopi"
+              className="w-full px-4 py-3 text-base bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold text-stone-900 placeholder:font-normal placeholder:text-stone-400 shadow-2xs"
             />
           </div>
 
-          {/* Priority / Type Selector */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
-              Jenis & Keutamaan Aktiviti
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {(Object.keys(PRIORITY_CONFIG) as ActivityPriority[]).map((pKey) => {
-                const pConfig = PRIORITY_CONFIG[pKey];
-                const isSelected = priority === pKey;
+          {/* 2. Day & Time of Day Selector */}
+          <div className="space-y-3 p-3.5 bg-stone-50 rounded-2xl border border-stone-200">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-bold text-stone-700 uppercase tracking-wider">
+                Waktu Hari
+              </label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-stone-500 font-medium">Hari:</span>
+                <select
+                  value={dayNumber}
+                  onChange={(e) => setDayNumber(Number(e.target.value))}
+                  className="px-2.5 py-1 text-xs bg-white border border-stone-300 rounded-lg text-stone-800 font-bold focus:ring-2 focus:ring-amber-500"
+                >
+                  {Array.from({ length: stay.durationDays || 3 }).map((_, idx) => (
+                    <option key={idx + 1} value={idx + 1}>
+                      Hari {idx + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* 3 Primary Time of Day Blocks */}
+            <div className="grid grid-cols-3 gap-2">
+              {(['morning', 'afternoon', 'evening'] as TimeSlot[]).map((slotKey) => {
+                const meta = TIME_SLOTS[slotKey];
+                const isSelected = timeSlot === slotKey;
                 return (
                   <button
-                    key={pKey}
+                    key={slotKey}
                     type="button"
-                    onClick={() => setPriority(pKey)}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                    onClick={() => setTimeSlot(slotKey)}
+                    className={`py-2.5 px-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                       isSelected
-                        ? `${pConfig.badgeClass} ring-2 ring-amber-500/30 shadow-2xs`
-                        : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
+                        ? 'bg-amber-600 border-amber-600 text-white shadow-xs font-bold'
+                        : 'bg-white hover:bg-stone-100 border-stone-200 text-stone-700 font-semibold'
                     }`}
                   >
-                    <p className="text-xs font-bold">{pConfig.label}</p>
-                    <p className="text-[10px] text-stone-500 line-clamp-1 mt-0.5">{pConfig.shortLabel}</p>
+                    <span className="text-xl">{meta.icon}</span>
+                    <span className="text-xs">{meta.label}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Specific Time & Location */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Masa Khusus (Pilihan)
-              </label>
-              <div className="relative">
-                <Clock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  value={timeSpecific}
-                  onChange={(e) => setTimeSpecific(e.target.value)}
-                  placeholder="Cth: 08:30 AM / Lepas Asar"
-                  className="w-full pl-10 pr-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
-                />
+          {/* 3. Secondary / Optional Details */}
+          <div className="space-y-4 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">
+                Butiran Tambahan (Pilihan)
+              </span>
+            </div>
+
+            {/* Specific Time & Location */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Masa Khusus (Pilihan)
+                </label>
+                <div className="relative">
+                  <Clock className="w-4 h-4 text-stone-400 absolute left-3.5 top-2.5" />
+                  <input
+                    type="text"
+                    value={timeSpecific}
+                    onChange={(e) => setTimeSpecific(e.target.value)}
+                    placeholder="Cth: 9:00 pagi / Lepas Asar"
+                    className="w-full pl-10 pr-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Lokasi / Tempat
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-stone-400 absolute left-3.5 top-2.5" />
+                  <input
+                    type="text"
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder="Cth: Pasar Payang / Pantai Teluk Ketapang"
+                    className="w-full pl-10 pr-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
               </div>
             </div>
 
+            {/* Priority / Category Selector */}
             <div>
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                Lokasi / Tempat
+              <label className="block text-xs font-semibold text-stone-700 mb-1.5">
+                Kategori / Keutamaan
               </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                  placeholder="Cth: Kedai Kopi Parit Jawa"
-                  className="w-full pl-10 pr-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
-                />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(Object.keys(PRIORITY_CONFIG) as ActivityPriority[]).map((pKey) => {
+                  const pConfig = PRIORITY_CONFIG[pKey];
+                  const isSelected = priority === pKey;
+                  return (
+                    <button
+                      key={pKey}
+                      type="button"
+                      onClick={() => setPriority(pKey)}
+                      className={`p-2 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? `${pConfig.badgeClass} ring-2 ring-amber-500/30 shadow-2xs`
+                          : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
+                      }`}
+                    >
+                      <p className="text-xs font-bold">{pConfig.label}</p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          </div>
 
-          {/* PIC (Person In Charge) */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-              Orang Bertanggungjawab (PIC)
-            </label>
-            <div className="relative">
-              <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                value={personInCharge}
-                onChange={(e) => setPersonInCharge(e.target.value)}
-                placeholder="Cth: Abang Long / Mak / Ayah"
-                className="w-full pl-10 pr-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
+            {/* PIC (Person In Charge) */}
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 mb-1">
+                Orang Bertanggungjawab (PIC)
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-2.5" />
+                <input
+                  type="text"
+                  value={personInCharge}
+                  onChange={(e) => setPersonInCharge(e.target.value)}
+                  placeholder="Cth: Abang Long / Mak / Ayah"
+                  className="w-full pl-10 pr-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              {stay.companions && stay.companions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <span className="text-[10px] text-stone-400">Pilih cepat:</span>
+                  {stay.companions.map((comp) => (
+                    <button
+                      key={comp}
+                      type="button"
+                      onClick={() => setPersonInCharge(comp)}
+                      className="px-2 py-0.5 text-[10px] bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md transition-colors"
+                    >
+                      {comp}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Description / Notes */}
+            <div>
+              <label className="block text-xs font-semibold text-stone-700 mb-1">
+                Catatan Ringkas
+              </label>
+              <textarea
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Cth: Bungkus awal elak sesak / Bawa pakaian mandi"
+                className="w-full px-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
               />
             </div>
-            {stay.companions && stay.companions.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                <span className="text-[10px] text-stone-400">Pilih cepat:</span>
-                {stay.companions.map((comp) => (
-                  <button
-                    key={comp}
-                    type="button"
-                    onClick={() => setPersonInCharge(comp)}
-                    className="px-2 py-0.5 text-[10px] bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md transition-colors"
-                  >
-                    {comp}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Description / Notes */}
-          <div>
-            <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-              Catatan & Perincian Ringkas
-            </label>
-            <textarea
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Cth: Jangan lupa bungkus lebih untuk bawa balik rumah Tok."
-              className="w-full px-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
-            />
           </div>
 
           {/* Form Actions */}

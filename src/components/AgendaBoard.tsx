@@ -24,6 +24,7 @@ import { PacingAdviceCard } from './PacingAdviceCard';
 interface AgendaBoardProps {
   stay: Stay;
   agendaItems: AgendaItem[];
+  initialSelectedDay?: number;
   onAddItem: (dayNumber: number, slot: TimeSlot) => void;
   onEditItem: (item: AgendaItem) => void;
   onDeleteItem: (id: string) => void;
@@ -33,12 +34,13 @@ interface AgendaBoardProps {
 export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   stay,
   agendaItems,
+  initialSelectedDay = 1,
   onAddItem,
   onEditItem,
   onDeleteItem,
   onToggleComplete
 }) => {
-  const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [selectedDay, setSelectedDay] = useState<number>(initialSelectedDay);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
 
   const daysCount = stay.durationDays || 3;
@@ -51,7 +53,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     return item.priority === priorityFilter;
   });
 
-  const slotKeys: TimeSlot[] = ['morning', 'afternoon', 'evening', 'flexible'];
+  // Core 3 time-of-day blocks (with fallback for flexible if existing data exists)
+  const hasFlexibleItems = filteredAgendas.some((i) => i.timeSlot === 'flexible');
+  const slotKeys: TimeSlot[] = hasFlexibleItems
+    ? ['morning', 'afternoon', 'evening', 'flexible']
+    : ['morning', 'afternoon', 'evening'];
 
   return (
     <div id="agenda-board" className="space-y-6">
@@ -143,20 +149,22 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               id={`slot-section-${slotKey}`}
               className="bg-white rounded-2xl border border-stone-200 shadow-2xs overflow-hidden"
             >
-              {/* Slot Header */}
-              <div className="flex items-center justify-between px-5 py-3.5 bg-stone-50 border-b border-stone-200">
+              {/* Slot Header - Clean Time of Day without rigid clock ranges */}
+              <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 bg-stone-50/90 border-b border-stone-200">
                 <div className="flex items-center gap-2.5">
                   <span className="text-xl">{slotMeta.icon}</span>
-                  <div>
-                    <h3 className="text-sm font-bold text-stone-900">{slotMeta.label}</h3>
-                    <p className="text-[10px] text-stone-500 font-medium">{slotMeta.period}</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-stone-900">{slotMeta.label}</h3>
+                    <span className="text-xs font-semibold text-stone-400">
+                      ({slotItems.length})
+                    </span>
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => onAddItem(selectedDay === 0 ? 1 : selectedDay, slotKey)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-100/70 hover:bg-amber-200/80 rounded-xl transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-100/80 hover:bg-amber-200 rounded-xl transition-all active:scale-98"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah Aktiviti</span>
@@ -193,8 +201,28 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                             {item.isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                           </button>
 
-                          <div className="space-y-1.5 flex-1">
+                          <div className="space-y-1.5 flex-1 min-w-0">
+                            {/* Title & Specific Time Row */}
                             <div className="flex flex-wrap items-center gap-2">
+                              <h4
+                                className={`text-sm sm:text-base font-bold leading-snug ${
+                                  item.isCompleted ? 'line-through text-stone-400' : 'text-stone-900'
+                                }`}
+                              >
+                                {item.title}
+                              </h4>
+
+                              {/* Specific Time (Optional Detail) */}
+                              {item.timeSpecific && (
+                                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 bg-amber-100/70 border border-amber-200/80 px-2 py-0.5 rounded-md">
+                                  <Clock className="w-3 h-3 text-amber-700" />
+                                  {item.timeSpecific}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Secondary Metadata Chips */}
+                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                               {/* Day badge if in all days view */}
                               {selectedDay === 0 && (
                                 <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-stone-100 text-stone-700 border border-stone-200">
@@ -204,22 +232,14 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
                               {/* Priority Badge */}
                               <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] rounded-md border ${pConfig.badgeClass}`}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] sm:text-[11px] rounded-md border ${pConfig.badgeClass}`}
                               >
                                 {pConfig.label}
                               </span>
 
-                              {/* Specific Time */}
-                              {item.timeSpecific && (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
-                                  <Clock className="w-3 h-3 text-stone-500" />
-                                  {item.timeSpecific}
-                                </span>
-                              )}
-
                               {/* Location */}
                               {item.locationName && (
-                                <span className="inline-flex items-center gap-1 text-xs text-stone-600 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded-md">
+                                <span className="inline-flex items-center gap-1 text-[11px] text-stone-600 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded-md">
                                   <MapPin className="w-3 h-3 text-stone-400" />
                                   {item.locationName}
                                 </span>
@@ -227,25 +247,16 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
                               {/* PIC */}
                               {item.personInCharge && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
                                   <User className="w-3 h-3 text-amber-600" />
                                   PIC: {item.personInCharge}
                                 </span>
                               )}
                             </div>
 
-                            {/* Title */}
-                            <h4
-                              className={`text-sm font-bold leading-snug ${
-                                item.isCompleted ? 'line-through text-stone-400' : 'text-stone-900'
-                              }`}
-                            >
-                              {item.title}
-                            </h4>
-
                             {/* Description */}
                             {item.description && (
-                              <p className="text-xs text-stone-600 leading-relaxed">
+                              <p className="text-xs text-stone-600 leading-relaxed pt-0.5">
                                 {item.description}
                               </p>
                             )}

@@ -1,0 +1,464 @@
+import React, { useState } from 'react';
+import { Stay, AgendaItem, TimeSlot } from '../types';
+import { TIME_SLOTS, PRIORITY_CONFIG } from '../utils/constants';
+import {
+  Calendar as CalendarIcon,
+  Plus,
+  Check,
+  MapPin,
+  Clock,
+  User,
+  ChevronRight,
+  Sparkles,
+  X,
+  List,
+  ChevronLeft
+} from 'lucide-react';
+
+interface CalendarViewProps {
+  stay: Stay;
+  agendaItems: AgendaItem[];
+  onSelectDayInAgenda: (dayNumber: number) => void;
+  onAddItem: (dayNumber: number, slot: TimeSlot) => void;
+  onEditItem: (item: AgendaItem) => void;
+  onToggleComplete: (id: string) => void;
+}
+
+export function CalendarView({
+  stay,
+  agendaItems,
+  onSelectDayInAgenda,
+  onAddItem,
+  onEditItem,
+  onToggleComplete
+}: CalendarViewProps) {
+  // Modal/Drawer state for Full Day Detail
+  const [selectedDayDetail, setSelectedDayDetail] = useState<number | null>(null);
+
+  const duration = stay.durationDays || 3;
+  const stayAgendas = agendaItems.filter((item) => item.stayId === stay.id);
+
+  // Helper to compute date for day index (1-based)
+  const getDayDateInfo = (dayIndex: number) => {
+    if (!stay.startDate) {
+      return {
+        dayNumber: dayIndex,
+        dateFormatted: `Hari ${dayIndex}`,
+        dayName: `Hari ${dayIndex}`,
+        dayOfMonth: `${dayIndex}`,
+        monthShort: ''
+      };
+    }
+
+    try {
+      const start = new Date(stay.startDate);
+      const targetDate = new Date(start);
+      targetDate.setDate(start.getDate() + (dayIndex - 1));
+
+      const dayName = targetDate.toLocaleDateString('ms-MY', { weekday: 'short' });
+      const dayOfMonth = targetDate.getDate().toString();
+      const monthShort = targetDate.toLocaleDateString('ms-MY', { month: 'short' });
+      const dateFormatted = targetDate.toLocaleDateString('ms-MY', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short'
+      });
+
+      return {
+        dayNumber: dayIndex,
+        dateFormatted,
+        dayName,
+        dayOfMonth,
+        monthShort
+      };
+    } catch {
+      return {
+        dayNumber: dayIndex,
+        dateFormatted: `Hari ${dayIndex}`,
+        dayName: `Hari ${dayIndex}`,
+        dayOfMonth: `${dayIndex}`,
+        monthShort: ''
+      };
+    }
+  };
+
+  // Sort items for a day: morning -> afternoon -> evening -> flexible
+  const getSortedDayItems = (dayNum: number) => {
+    const slotRank: Record<TimeSlot, number> = {
+      morning: 1,
+      afternoon: 2,
+      evening: 3,
+      flexible: 4
+    };
+    return stayAgendas
+      .filter((item) => item.dayNumber === dayNum)
+      .sort((a, b) => slotRank[a.timeSlot] - slotRank[b.timeSlot]);
+  };
+
+  const activeDayDetailItems = selectedDayDetail !== null ? getSortedDayItems(selectedDayDetail) : [];
+  const activeDayDateInfo = selectedDayDetail !== null ? getDayDateInfo(selectedDayDetail) : null;
+
+  return (
+    <div id="stay-calendar-view" className="space-y-6">
+      
+      {/* Calendar Header / Subtitle Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-amber-100/80 text-amber-800">
+            <CalendarIcon className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-stone-900">
+              Gambaran Keseluruhan Kalendar Stay
+            </h3>
+            <p className="text-xs text-stone-500">
+              Lihat ringkasan aktiviti bagi setiap hari ({duration} Hari {duration > 1 ? `${duration - 1} Malam` : ''}).
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onAddItem(1, 'morning')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-all shadow-2xs active:scale-98"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Tambah Agenda</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Responsive Calendar Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+        {Array.from({ length: duration }).map((_, idx) => {
+          const dayNum = idx + 1;
+          const dateInfo = getDayDateInfo(dayNum);
+          const dayItems = getSortedDayItems(dayNum);
+          const visibleLimit = 5;
+          const visibleItems = dayItems.slice(0, visibleLimit);
+          const remainingCount = dayItems.length - visibleLimit;
+          const completedCount = dayItems.filter((i) => i.isCompleted).length;
+
+          return (
+            <div
+              key={dayNum}
+              id={`calendar-day-card-${dayNum}`}
+              className="bg-white rounded-2xl border border-stone-200 shadow-2xs hover:border-amber-300 hover:shadow-xs transition-all flex flex-col overflow-hidden group"
+            >
+              {/* Day Card Header */}
+              <div className="p-4 bg-stone-50/90 border-b border-stone-200 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-center justify-center min-w-11 px-2 py-1 bg-white border border-stone-200 rounded-xl shadow-2xs">
+                    <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                      {dateInfo.dayName}
+                    </span>
+                    <span className="text-base font-extrabold text-stone-900 leading-none">
+                      {dateInfo.dayOfMonth}
+                    </span>
+                    {dateInfo.monthShort && (
+                      <span className="text-[9px] font-semibold text-stone-400">
+                        {dateInfo.monthShort}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-stone-900 block">
+                      Hari {dayNum}
+                    </span>
+                    <span className="text-[11px] text-stone-500">
+                      {dayItems.length === 0
+                        ? 'Tiada agenda'
+                        : `${completedCount}/${dayItems.length} selesai`}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  title="Tambah aktiviti untuk hari ini"
+                  onClick={() => onAddItem(dayNum, 'morning')}
+                  className="p-1.5 text-stone-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Day Items List (Target: 4-5 items) */}
+              <div className="p-3 sm:p-3.5 flex-1 flex flex-col justify-between space-y-2 min-h-52">
+                {dayItems.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-6 text-center text-stone-400">
+                    <span className="text-2xl mb-1">🍃</span>
+                    <p className="text-xs font-medium text-stone-500">Hari Santai / Bebas</p>
+                    <button
+                      type="button"
+                      onClick={() => onAddItem(dayNum, 'morning')}
+                      className="mt-2 text-[11px] font-bold text-amber-700 hover:underline"
+                    >
+                      + Tambah agenda
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 flex-1">
+                    {visibleItems.map((item) => {
+                      const slotMeta = TIME_SLOTS[item.timeSlot] || TIME_SLOTS.morning;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => onEditItem(item)}
+                          className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2 group/item ${
+                            item.isCompleted
+                              ? 'bg-stone-50/70 border-stone-200 text-stone-400'
+                              : 'bg-white hover:bg-amber-50/40 border-stone-200/80 hover:border-amber-200 text-stone-800 shadow-2xs'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            aria-label="Tanda selesai"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleComplete(item.id);
+                            }}
+                            className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                              item.isCompleted
+                                ? 'bg-emerald-600 border-emerald-600 text-white'
+                                : 'border-stone-300 hover:border-amber-500 bg-stone-50'
+                            }`}
+                          >
+                            {item.isCompleted && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          </button>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs shrink-0" title={slotMeta.label}>
+                                {slotMeta.icon}
+                              </span>
+                              <span
+                                className={`text-xs font-bold truncate ${
+                                  item.isCompleted ? 'line-through text-stone-400' : 'text-stone-900'
+                                }`}
+                              >
+                                {item.title}
+                              </span>
+                            </div>
+
+                            {/* Secondary Metadata (light/compact) */}
+                            {(item.timeSpecific || item.locationName) && (
+                              <div className="flex items-center gap-2 text-[10px] text-stone-500 mt-0.5 truncate pl-4">
+                                {item.timeSpecific && (
+                                  <span className="font-semibold text-amber-900/80">
+                                    {item.timeSpecific}
+                                  </span>
+                                )}
+                                {item.locationName && (
+                                  <span className="truncate">📍 {item.locationName}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Progressive Disclosure Footer: "+ More" or "Lihat Hari" */}
+                <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-2">
+                  {remainingCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDayDetail(dayNum)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      <span>+ {remainingCount} lagi</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDayDetail(dayNum)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-500 hover:text-stone-800 hover:bg-stone-100 px-2 py-1 rounded-lg transition-colors"
+                    >
+                      <span>Lihat Butiran</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => onSelectDayInAgenda(dayNum)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-600 hover:text-amber-800 hover:bg-amber-50/60 px-2 py-1 rounded-lg transition-colors"
+                  >
+                    <span>Buka Agenda</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Full Day Details Modal / Popover (Progressive Disclosure) */}
+      {selectedDayDetail !== null && activeDayDateInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            id="full-day-detail-modal"
+            className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-stone-200 overflow-hidden"
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-center justify-center min-w-12 px-2.5 py-1.5 bg-amber-600 text-white rounded-xl shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">
+                    {activeDayDateInfo.dayName}
+                  </span>
+                  <span className="text-lg font-extrabold leading-none">
+                    {activeDayDateInfo.dayOfMonth}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">
+                    Hari {selectedDayDetail}: {activeDayDateInfo.dateFormatted}
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    {activeDayDetailItems.length} agenda dirancang untuk hari ini
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDayDetail(null)}
+                className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: Complete list of items for this day */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-3">
+              {activeDayDetailItems.length === 0 ? (
+                <div className="py-10 text-center text-stone-400 space-y-2">
+                  <span className="text-3xl">🍃</span>
+                  <p className="text-sm font-semibold text-stone-600">Tiada agenda untuk hari ini.</p>
+                  <p className="text-xs text-stone-400">Luangkan masa untuk aktiviti bebas atau berehat.</p>
+                </div>
+              ) : (
+                activeDayDetailItems.map((item) => {
+                  const slotMeta = TIME_SLOTS[item.timeSlot] || TIME_SLOTS.morning;
+                  const pConfig = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.optional;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setSelectedDayDetail(null);
+                        onEditItem(item);
+                      }}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                        item.isCompleted
+                          ? 'bg-stone-50 border-stone-200 opacity-70'
+                          : 'bg-white hover:bg-amber-50/40 border-stone-200 shadow-2xs hover:border-amber-300'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleComplete(item.id);
+                        }}
+                        className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                          item.isCompleted
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                            : 'border-stone-300 hover:border-amber-500 bg-stone-50'
+                        }`}
+                      >
+                        {item.isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </button>
+
+                      <div className="flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm">{slotMeta.icon}</span>
+                          <span className="text-xs font-bold text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md">
+                            {slotMeta.label}
+                          </span>
+                          {item.timeSpecific && (
+                            <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md">
+                              {item.timeSpecific}
+                            </span>
+                          )}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md border ${pConfig.badgeClass}`}>
+                            {pConfig.label}
+                          </span>
+                        </div>
+
+                        <h4
+                          className={`text-sm font-bold ${
+                            item.isCompleted ? 'line-through text-stone-400' : 'text-stone-900'
+                          }`}
+                        >
+                          {item.title}
+                        </h4>
+
+                        {item.description && (
+                          <p className="text-xs text-stone-600 pt-0.5">{item.description}</p>
+                        )}
+
+                        {(item.locationName || item.personInCharge) && (
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-stone-500 pt-1">
+                            {item.locationName && (
+                              <span className="inline-flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-stone-400" />
+                                {item.locationName}
+                              </span>
+                            )}
+                            {item.personInCharge && (
+                              <span className="inline-flex items-center gap-1 text-amber-900">
+                                <User className="w-3 h-3 text-amber-600" />
+                                PIC: {item.personInCharge}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const day = selectedDayDetail;
+                  setSelectedDayDetail(null);
+                  onSelectDayInAgenda(day);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-4 py-2.5 rounded-xl hover:bg-stone-100 transition-colors"
+              >
+                <List className="w-4 h-4" />
+                <span>Buka Paparan Penuh Agenda</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const day = selectedDayDetail;
+                  setSelectedDayDetail(null);
+                  onAddItem(day, 'morning');
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 px-4 py-2.5 rounded-xl transition-colors shadow-2xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Agenda</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

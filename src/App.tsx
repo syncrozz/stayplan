@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { StayProvider, useStay } from './context/StayContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
+import { CalendarView } from './components/CalendarView';
 import { AgendaBoard } from './components/AgendaBoard';
 import { PackingChecklist } from './components/PackingChecklist';
 import { StayInfoCard } from './components/StayInfoCard';
@@ -28,7 +29,8 @@ import {
   Plus,
   Lock,
   Compass,
-  ShieldAlert
+  ShieldAlert,
+  LayoutGrid
 } from 'lucide-react';
 
 function StayPlanApp() {
@@ -64,8 +66,14 @@ function StayPlanApp() {
   const [defaultDay, setDefaultDay] = useState(1);
   const [defaultSlot, setDefaultSlot] = useState<TimeSlot>('morning');
 
-  // Main navigation tab
-  const [activeTab, setActiveTab] = useState<'agenda' | 'checklist' | 'info'>('agenda');
+  // Main navigation tab (Default: Calendar View)
+  const [activeTab, setActiveTab] = useState<'calendar' | 'agenda' | 'checklist' | 'info'>('calendar');
+  const [selectedAgendaDay, setSelectedAgendaDay] = useState<number>(1);
+
+  const handleSelectDayInAgenda = (dayNumber: number) => {
+    setSelectedAgendaDay(dayNumber);
+    setActiveTab('agenda');
+  };
 
   const typeMeta = activeStay ? STAY_TYPES[activeStay.type] || STAY_TYPES.custom : null;
 
@@ -358,21 +366,51 @@ function StayPlanApp() {
               </div>
             </div>
 
-            {/* Hero Quick Actions */}
-            <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+            {/* Hero Quick Actions: Calendar (Primary/Default), Agenda & Edit Stay */}
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
+              <button
+                id="hero-calendar-btn"
+                type="button"
+                onClick={() => setActiveTab('calendar')}
+                className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl transition-all shadow-2xs ${
+                  activeTab === 'calendar'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>📅 Calendar</span>
+              </button>
+
+              <button
+                id="hero-agenda-btn"
+                type="button"
+                onClick={() => setActiveTab('agenda')}
+                className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl transition-all shadow-2xs ${
+                  activeTab === 'agenda'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>☷ Agenda</span>
+              </button>
+
               <button
                 id="hero-edit-stay-btn"
+                type="button"
                 onClick={() => handleOpenEditStay(activeStay)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors"
               >
                 <Edit3 className="w-3.5 h-3.5" />
-                <span>Sunting Stay</span>
+                <span>✏️ Sunting Stay</span>
               </button>
 
               <button
                 id="hero-share-btn"
+                type="button"
                 onClick={() => setIsShareOpen(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>Kongsi (WhatsApp)</span>
@@ -383,24 +421,37 @@ function StayPlanApp() {
         </section>
 
         {/* View Navigation Tabs */}
-        <div className="flex border-b border-stone-200 gap-2 sm:gap-4 text-xs sm:text-sm font-bold">
+        <div className="flex border-b border-stone-200 gap-2 sm:gap-4 text-xs sm:text-sm font-bold overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('calendar')}
+            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
+              activeTab === 'calendar'
+                ? 'border-amber-600 text-amber-900'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Calendar</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('agenda')}
-            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 transition-all ${
+            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
               activeTab === 'agenda'
                 ? 'border-amber-600 text-amber-900'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
             }`}
           >
             <CalendarDays className="w-4 h-4" />
-            <span>Papan Agenda & Pacing ({activeAgendaItems.length})</span>
+            <span>Papan Agenda ({activeAgendaItems.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('checklist')}
-            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 transition-all ${
+            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
               activeTab === 'checklist'
                 ? 'border-amber-600 text-amber-900'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
@@ -413,7 +464,7 @@ function StayPlanApp() {
           <button
             type="button"
             onClick={() => setActiveTab('info')}
-            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 transition-all ${
+            className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all ${
               activeTab === 'info'
                 ? 'border-amber-600 text-amber-900'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
@@ -424,11 +475,30 @@ function StayPlanApp() {
           </button>
         </div>
 
-        {/* Tab 1: Agenda Board */}
+        {/* Tab 0: Calendar View (Default Overview) */}
+        {activeTab === 'calendar' && (
+          <CalendarView
+            stay={activeStay}
+            agendaItems={activeAgendaItems}
+            onSelectDayInAgenda={handleSelectDayInAgenda}
+            onAddItem={handleOpenNewActivity}
+            onEditItem={handleOpenEditActivity}
+            onToggleComplete={(id) => {
+              if (!isAuthenticated) {
+                openAuthModal('Log masuk dengan Google untuk menandakan aktiviti selesai.');
+                return;
+              }
+              toggleAgendaComplete(id);
+            }}
+          />
+        )}
+
+        {/* Tab 1: Detailed Agenda Board */}
         {activeTab === 'agenda' && (
           <AgendaBoard
             stay={activeStay}
             agendaItems={activeAgendaItems}
+            initialSelectedDay={selectedAgendaDay}
             onAddItem={handleOpenNewActivity}
             onEditItem={handleOpenEditActivity}
             onDeleteItem={(id) => {
