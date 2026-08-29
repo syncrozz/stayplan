@@ -74,22 +74,22 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl sm:text-2xl font-extrabold text-stone-900 tracking-tight">
-                {isPersonalMode ? 'Koleksi StayPlan Peribadi' : 'Eksplorasi StayPlan (Showcase)'}
+                {isPersonalMode ? 'Koleksi StayPlan Peribadi' : 'Contoh & Demo StayPlan'}
               </h2>
               {isPersonalMode ? (
                 <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-100 text-emerald-800">
                   Peribadi
                 </span>
               ) : (
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-800">
-                  Pratonton
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                  ✨ DEMO
                 </span>
               )}
             </div>
             <p className="text-xs text-stone-500 mt-0.5">
               {isPersonalMode
                 ? 'Semua perancangan short stay yang anda miliki dan disimpan di awan.'
-                : 'Contoh struktur StayPlan. Log masuk untuk menyimpan pelan peribadi anda.'}
+                : 'Contoh struktur StayPlan untuk demonstrasi interaktif. Log masuk dengan Google untuk cipta pelan peribadi anda.'}
             </p>
           </div>
 

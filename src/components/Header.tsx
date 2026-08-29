@@ -89,11 +89,11 @@ export const Header: React.FC<HeaderProps> = ({
                 ) : (
                   <span
                     onClick={() => openAuthModal('Log masuk untuk mula mencipta pelan stay peribadi anda.')}
-                    className="cursor-pointer hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition-colors"
-                    title="Mod Eksplorasi. Klik untuk log masuk."
+                    className="cursor-pointer hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition-colors"
+                    title="Sedang melihat contoh StayPlan (Demo). Klik untuk log masuk."
                   >
-                    <Lock className="w-2.5 h-2.5 text-amber-600" />
-                    <span>Eksplorasi (Showcase)</span>
+                    <Sparkles className="w-2.5 h-2.5 text-amber-700" />
+                    <span>✨ DEMO</span>
                   </span>
                 )}
               </div>

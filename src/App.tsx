@@ -14,6 +14,8 @@ import { StaySelectorModal } from './components/StaySelectorModal';
 import { ActivityModal } from './components/ActivityModal';
 import { ShareExportModal } from './components/ShareExportModal';
 import { AuthModal } from './components/AuthModal';
+import { ShowcaseIntroHero } from './components/ShowcaseIntroHero';
+import { WalkthroughModal } from './components/WalkthroughModal';
 import { STAY_TYPES } from './utils/constants';
 import { formatDateRange, formatStaySummary } from './utils/formatters';
 import { Stay, AgendaItem, TimeSlot } from './types';
@@ -63,6 +65,7 @@ function StayPlanApp() {
   const [isCreateStayOpen, setIsCreateStayOpen] = useState(false);
   const [editingStay, setEditingStay] = useState<Stay | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isWalkthroughOpen, setIsWalkthroughOpen] = useState(false);
 
   // Activity Modal state
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
@@ -77,6 +80,14 @@ function StayPlanApp() {
   const handleSelectDayInAgenda = (dayNumber: number) => {
     setSelectedAgendaDay(dayNumber);
     setActiveTab('agenda');
+  };
+
+  const handleExploreDemo = () => {
+    setActiveTab('plan');
+    const el = document.getElementById('stay-hero-banner');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const typeMeta = activeStay ? STAY_TYPES[activeStay.type] || STAY_TYPES.custom : null;
@@ -309,20 +320,21 @@ function StayPlanApp() {
       {/* Device Sync & Persistence Status Notification Banner */}
       {!isAuthenticated ? (
         <div className="bg-amber-500/10 border-b border-amber-200/80">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-950">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-950">
             <div className="flex items-center gap-2">
               <span className="p-1 rounded-md bg-amber-600 text-white shrink-0">
-                <Compass className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5" />
               </span>
               <span>
-                <strong>Mod Eksplorasi (Showcase):</strong> Anda sedang melihat contoh. Log masuk dengan Google untuk menyimpan pelan peribadi anda di awan & buka di mana-mana peranti.
+                <strong>Sedang melihat contoh StayPlan.</strong> Explore contoh ini untuk faham cara StayPlan berfungsi.
               </span>
             </div>
             <button
-              onClick={() => openAuthModal('Log masuk untuk mula mencipta pelan stay peribadi anda.')}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[11px] shrink-0 transition-colors cursor-pointer"
+              onClick={() => openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda.')}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors cursor-pointer inline-flex items-center gap-1.5"
             >
-              Log Masuk Google
+              <Lock className="w-3 h-3" />
+              <span>Mula Rancang Dengan Google</span>
             </button>
           </div>
         </div>
@@ -364,6 +376,15 @@ function StayPlanApp() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
         
+        {/* First-Time User Experience / Demo Showcase Introduction */}
+        {!isPersonalMode && (
+          <ShowcaseIntroHero
+            activeStay={activeStay}
+            onExploreDemo={handleExploreDemo}
+            onOpenWalkthrough={() => setIsWalkthroughOpen(true)}
+          />
+        )}
+
         {/* Stay Hero Card */}
         <section id="stay-hero-banner" className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-2xs space-y-5 relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -383,8 +404,8 @@ function StayPlanApp() {
                     Peribadi
                   </span>
                 ) : (
-                  <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 text-[11px] font-medium">
-                    Showcase
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold">
+                    ✨ CONTOH / DEMO
                   </span>
                 )}
               </div>
@@ -679,6 +700,12 @@ function StayPlanApp() {
         stay={activeStay}
         agendaItems={activeAgendaItems}
         checklistItems={activeChecklistItems}
+      />
+
+      <WalkthroughModal
+        isOpen={isWalkthroughOpen}
+        onClose={() => setIsWalkthroughOpen(false)}
+        onExploreDemo={handleExploreDemo}
       />
 
       {/* Lightweight Google Auth Gate Modal */}
