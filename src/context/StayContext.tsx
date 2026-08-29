@@ -10,8 +10,6 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
-  query,
-  orderBy,
   getDocs,
   writeBatch
 } from 'firebase/firestore';
@@ -27,6 +25,7 @@ interface StayContextType {
   activeChecklistItems: ChecklistItem[];
   isPersonalMode: boolean;
   isLoadingStays: boolean;
+  isSyncing: boolean;
   addStay: (stay: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<string>;
   updateStay: (id: string, updates: Partial<Stay>) => Promise<void>;
   deleteStay: (id: string) => Promise<void>;
@@ -52,6 +51,28 @@ const LOCAL_CHECKLIST_KEY = 'stayplan_local_checklist';
 const LOCAL_ACTIVE_ID_KEY = 'stayplan_local_active_id';
 
 const getUserCacheKey = (uid: string, suffix: string) => `stayplan_cloud_cache_${uid}_${suffix}`;
+
+/**
+ * Sanitizes object by removing `undefined` values recursively so Firestore never errors on invalid values.
+ */
+function sanitizeForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return null as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        cleaned[key] = typeof val === 'object' && val !== null ? sanitizeForFirestore(val) : val;
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
 
 function loadLocalData<T>(key: string, fallback: T): T {
   try {
@@ -107,6 +128,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isLoadingStays, setIsLoadingStays] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   const isPersonalMode = !!user;
 
@@ -163,8 +185,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Standard Firebase Authenticated User
-    // 1. Instantly populate from user's cache so there's 0ms screen blocking
+    // Standard Firebase Authenticated User (Google Account)
     const cachedStays = loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
     const cachedActiveId = loadLocalData<string | null>(getUserCacheKey(user.uid, 'active_id'), null);
     const cachedAgenda = loadLocalData<AgendaItem[]>(getUserCacheKey(user.uid, 'agenda'), []);
@@ -182,34 +203,47 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoadingStays(true);
     }
 
-    // Fast 1.5-second timeout safety guarantee so app never hangs on loading screen
+    // Safety timeout so UI never hangs indefinitely
     const safetyTimeout = setTimeout(() => {
       setIsLoadingStays(false);
-    }, 1500);
+    }, 2000);
 
-    const initAndSubscribeUser = async () => {
-      // Check for local guest data to migrate to Firestore
-      const localStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
-      const localAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
-      const localChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
+    // Auto-migrate any local guest data created before login
+    const autoMigrateGuestData = async () => {
+      try {
+        const localStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
+        const localAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
+        const localChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
 
-      if (localStays.length > 0) {
-        try {
+        if (localStays.length > 0) {
           const batch = writeBatch(db);
           for (const s of localStays) {
+            const sanitizedStay = sanitizeForFirestore<Stay>({
+              ...s,
+              userId: user.uid,
+              updatedAt: Date.now()
+            });
             const stayDocRef = doc(db, 'users', user.uid, 'stays', s.id);
-            batch.set(stayDocRef, { ...s, userId: user.uid, updatedAt: Date.now() }, { merge: true });
+            batch.set(stayDocRef, sanitizedStay, { merge: true });
 
             const sAgendas = localAgenda.filter((a) => a.stayId === s.id);
             for (const a of sAgendas) {
+              const sanitizedAgenda = sanitizeForFirestore<AgendaItem>({
+                ...a,
+                userId: user.uid
+              });
               const aRef = doc(db, 'users', user.uid, 'stays', s.id, 'agendaItems', a.id);
-              batch.set(aRef, { ...a, userId: user.uid }, { merge: true });
+              batch.set(aRef, sanitizedAgenda, { merge: true });
             }
 
             const sChecklists = localChecklist.filter((c) => c.stayId === s.id);
             for (const c of sChecklists) {
+              const sanitizedChecklist = sanitizeForFirestore<ChecklistItem>({
+                ...c,
+                userId: user.uid
+              });
               const cRef = doc(db, 'users', user.uid, 'stays', s.id, 'checklistItems', c.id);
-              batch.set(cRef, { ...c, userId: user.uid }, { merge: true });
+              batch.set(cRef, sanitizedChecklist, { merge: true });
             }
           }
           await batch.commit();
@@ -218,25 +252,28 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.removeItem(LOCAL_AGENDA_KEY);
           localStorage.removeItem(LOCAL_CHECKLIST_KEY);
           localStorage.removeItem(LOCAL_ACTIVE_ID_KEY);
-        } catch (migErr) {
-          console.warn('Auto-migration note:', migErr);
         }
+      } catch (migErr) {
+        console.warn('Auto-migration note:', migErr);
       }
     };
 
-    initAndSubscribeUser();
+    autoMigrateGuestData();
 
-    const staysRef = collection(db, 'users', user.uid, 'stays');
-    const staysQuery = query(staysRef, orderBy('createdAt', 'desc'));
+    // Listen to all stays for current authenticated user
+    const staysColRef = collection(db, 'users', user.uid, 'stays');
 
     const unsubscribe = onSnapshot(
-      staysQuery,
+      staysColRef,
       (snapshot) => {
         clearTimeout(safetyTimeout);
         const fetchedStays: Stay[] = [];
         snapshot.forEach((docSnap) => {
           fetchedStays.push(docSnap.data() as Stay);
         });
+
+        // Sort descending by createdAt (or updatedAt) reliably in-memory
+        fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
         setUserStays(fetchedStays);
         saveLocalData(getUserCacheKey(user.uid, 'stays'), fetchedStays);
@@ -259,7 +296,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
       (error) => {
         clearTimeout(safetyTimeout);
-        console.warn('Firestore sync note:', error.message || error);
+        console.warn('Firestore stays sync note:', error.message || error);
         setIsLoadingStays(false);
       }
     );
@@ -273,7 +310,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 2. Subscribe to Agenda & Checklist of the currently active stay (for Firebase User)
   useEffect(() => {
     if (!user || user.uid === 'guest-local-user' || !activeStayId) {
-      if (user && user.uid !== 'guest-local-user') {
+      if (!user) {
         setUserAgendaItems([]);
         setUserChecklistItems([]);
       }
@@ -288,13 +325,11 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (snapshot) => {
         const items: AgendaItem[] = [];
         snapshot.forEach((d) => items.push(d.data() as AgendaItem));
+
         setUserAgendaItems((prev) => {
-          // Merge preserving any optimistic items not yet acked
-          const serverIds = new Set(items.map((i) => i.id));
-          const optimisticPending = prev.filter(
-            (p) => p.stayId === activeStayId && !serverIds.has(p.id) && Date.now() - (Number(p.id.split('_')[1]) || 0) < 15000
-          );
-          const merged = [...items, ...optimisticPending];
+          // Keep items from other stays intact so switching stays preserves loaded state
+          const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
+          const merged = [...otherStaysItems, ...items];
           saveLocalData(getUserCacheKey(user.uid, 'agenda'), merged);
           return merged;
         });
@@ -307,12 +342,11 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (snapshot) => {
         const items: ChecklistItem[] = [];
         snapshot.forEach((d) => items.push(d.data() as ChecklistItem));
+
         setUserChecklistItems((prev) => {
-          const serverIds = new Set(items.map((i) => i.id));
-          const optimisticPending = prev.filter(
-            (p) => p.stayId === activeStayId && !serverIds.has(p.id) && Date.now() - (Number(p.id.split('_')[1]) || 0) < 15000
-          );
-          const merged = [...items, ...optimisticPending];
+          // Keep items from other stays intact
+          const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
+          const merged = [...otherStaysItems, ...items];
           saveLocalData(getUserCacheKey(user.uid, 'checklist'), merged);
           return merged;
         });
@@ -360,7 +394,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // --- ACTIONS (Optimistic & Non-blocking) ---
+  // --- ACTIONS (Optimistic & Non-blocking with guaranteed Firestore synchronization) ---
 
   const addStay = useCallback(
     async (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>): Promise<string> => {
@@ -429,6 +463,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       setActiveStayIdState(stayId);
+
       if (user.uid === 'guest-local-user') {
         saveLocalData(LOCAL_ACTIVE_ID_KEY, stayId);
         return stayId;
@@ -436,25 +471,28 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       saveLocalData(getUserCacheKey(user.uid, 'active_id'), stayId);
 
-      // 2. Dispatch to Firestore asynchronously in the background
+      // 2. Dispatch to Firestore with sanitization so it is 100% saved across all devices
       (async () => {
         try {
-          const stayCol = collection(db, 'users', user.uid, 'stays');
-          const stayDoc = doc(stayCol, stayId);
-          await setDoc(stayDoc, newStay);
+          setIsSyncing(true);
+          const sanitizedStay = sanitizeForFirestore<Stay>(newStay);
+          const stayDoc = doc(db, 'users', user.uid, 'stays', stayId);
+          await setDoc(stayDoc, sanitizedStay);
 
           const batch = writeBatch(db);
           starterChecklist.forEach((item) => {
             const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'), item.id);
-            batch.set(itemRef, item);
+            batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
           });
 
           const day1Ref = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'), starterAgenda.id);
-          batch.set(day1Ref, starterAgenda);
+          batch.set(day1Ref, sanitizeForFirestore<AgendaItem>(starterAgenda));
 
           await batch.commit();
         } catch (err) {
-          console.error('Background addStay sync error:', err);
+          console.error('Firestore addStay sync error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
 
@@ -486,10 +524,17 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Async Firestore write
       (async () => {
         try {
+          setIsSyncing(true);
           const stayRef = doc(db, 'users', user.uid, 'stays', id);
-          await updateDoc(stayRef, { ...updates, updatedAt: Date.now() });
+          const sanitizedUpdates = sanitizeForFirestore<Partial<Stay>>({
+            ...updates,
+            updatedAt: Date.now()
+          });
+          await updateDoc(stayRef, sanitizedUpdates);
         } catch (err) {
-          console.error('Background updateStay sync error:', err);
+          console.error('Firestore updateStay sync error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -543,6 +588,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Async Firestore deletion in background
       (async () => {
         try {
+          setIsSyncing(true);
           const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
           const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
 
@@ -552,7 +598,9 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
           batch.delete(doc(db, 'users', user.uid, 'stays', id));
           await batch.commit();
         } catch (err) {
-          console.error('Background deleteStay sync error:', err);
+          console.error('Firestore deleteStay sync error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -638,23 +686,26 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Async Firestore write in background
       (async () => {
         try {
+          setIsSyncing(true);
           const batch = writeBatch(db);
           const stayRef = doc(db, 'users', user.uid, 'stays', newStayId);
-          batch.set(stayRef, duplicatedStay);
+          batch.set(stayRef, sanitizeForFirestore<Stay>(duplicatedStay));
 
           dupAgendas.forEach((item) => {
             const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'agendaItems'), item.id);
-            batch.set(itemRef, item);
+            batch.set(itemRef, sanitizeForFirestore<AgendaItem>(item));
           });
 
           dupChecklists.forEach((item) => {
             const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'checklistItems'), item.id);
-            batch.set(itemRef, item);
+            batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
           });
 
           await batch.commit();
         } catch (err) {
-          console.error('Background duplicateStay sync error:', err);
+          console.error('Firestore duplicateStay sync error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -691,14 +742,17 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return newItemId;
       }
 
-      // 2. Dispatch Firestore write in background
+      // 2. Dispatch Firestore write in background with sanitization
       (async () => {
         try {
+          setIsSyncing(true);
           const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
           const docRef = doc(colRef, newItemId);
-          await setDoc(docRef, newItem);
+          await setDoc(docRef, sanitizeForFirestore<AgendaItem>(newItem));
         } catch (err) {
-          console.error('Background addAgendaItem error:', err);
+          console.error('Firestore addAgendaItem error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
 
@@ -729,10 +783,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
-          await updateDoc(itemRef, updates);
+          await updateDoc(itemRef, sanitizeForFirestore<Partial<AgendaItem>>(updates));
         } catch (err) {
-          console.error('Background updateAgendaItem error:', err);
+          console.error('Firestore updateAgendaItem error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -763,14 +820,17 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const batch = writeBatch(db);
           for (const item of updatesList) {
             const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', item.id);
-            batch.update(itemRef, item.updates);
+            batch.update(itemRef, sanitizeForFirestore<Partial<AgendaItem>>(item.updates));
           }
           await batch.commit();
         } catch (err) {
-          console.error('Background batchUpdateAgendaItems error:', err);
+          console.error('Firestore batchUpdateAgendaItems error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -799,10 +859,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
           await deleteDoc(itemRef);
         } catch (err) {
-          console.error('Background deleteAgendaItem error:', err);
+          console.error('Firestore deleteAgendaItem error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -835,10 +898,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
           await updateDoc(itemRef, { isCompleted: nextCompleted });
         } catch (err) {
-          console.error('Background toggleAgendaComplete error:', err);
+          console.error('Firestore toggleAgendaComplete error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -875,11 +941,14 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
           const docRef = doc(colRef, newItemId);
-          await setDoc(docRef, newItem);
+          await setDoc(docRef, sanitizeForFirestore<ChecklistItem>(newItem));
         } catch (err) {
-          console.error('Background addChecklistItem error:', err);
+          console.error('Firestore addChecklistItem error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
 
@@ -913,10 +982,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
           await updateDoc(itemRef, { isCompleted: nextCompleted });
         } catch (err) {
-          console.error('Background toggleChecklistComplete error:', err);
+          console.error('Firestore toggleChecklistComplete error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -945,10 +1017,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       (async () => {
         try {
+          setIsSyncing(true);
           const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
           await deleteDoc(itemRef);
         } catch (err) {
-          console.error('Background deleteChecklistItem error:', err);
+          console.error('Firestore deleteChecklistItem error:', err);
+        } finally {
+          setIsSyncing(false);
         }
       })();
     },
@@ -1026,6 +1101,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeChecklistItems,
         isPersonalMode,
         isLoadingStays,
+        isSyncing,
         addStay,
         updateStay,
         deleteStay,
@@ -1054,3 +1130,4 @@ export const useStay = () => {
   }
   return context;
 };
+

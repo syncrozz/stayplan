@@ -28,7 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenStayList,
   onOpenShare
 }) => {
-  const { activeStay, isPersonalMode } = useStay();
+  const { activeStay, isPersonalMode, isSyncing } = useStay();
   const { user, userProfile, role, isAuthenticated, isGuest, openAuthModal, signOut } = useAuth();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -73,15 +73,22 @@ export const Header: React.FC<HeaderProps> = ({
                   Stay<span className="text-amber-600">Plan</span>
                 </h1>
                 {isAuthenticated && !isGuest ? (
-                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200" title="Data disegerakkan ke Awan (Cloud Sync)">
-                    <Cloud className="w-2.5 h-2.5 text-emerald-600" />
-                    <span>Cloud Sync</span>
+                  <span
+                    className={`hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-colors ${
+                      isSyncing
+                        ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    }`}
+                    title={isSyncing ? 'Sedang menyimpan ke akaun Google...' : 'Data disegerakkan ke Akaun Google anda'}
+                  >
+                    <Cloud className={`w-2.5 h-2.5 ${isSyncing ? 'text-amber-600 animate-pulse' : 'text-emerald-600'}`} />
+                    <span>{isSyncing ? 'Syncing...' : 'Google Sync'}</span>
                   </span>
                 ) : isGuest ? (
                   <span
-                    onClick={() => openAuthModal('Log masuk dengan Google untuk sync pelan ini ke semua peranti anda.')}
+                    onClick={() => openAuthModal('Log masuk dengan Google untuk sync pelan ini ke semua peranti anda secara automatik.')}
                     className="cursor-pointer hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors"
-                    title="Mod Tempatan (Device ini sahaja). Klik untuk Log Masuk & Sync."
+                    title="Mod Tempatan (Device ini sahaja). Klik untuk Log Masuk & Sync ke Google Account."
                   >
                     <Smartphone className="w-2.5 h-2.5 text-amber-600" />
                     <span>Mod Tempatan</span>
