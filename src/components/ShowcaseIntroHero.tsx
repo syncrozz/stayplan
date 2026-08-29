@@ -51,7 +51,7 @@ export const ShowcaseIntroHero: React.FC<ShowcaseIntroHeroProps> = ({
 
           <div className="space-y-1.5">
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-stone-900 tracking-tight font-sans">
-              “Plan the stay, don&apos;t miss something.”
+              “Plan the stay, it&apos;s better then didn&apos;t”
             </h1>
             <p className="text-sm sm:text-base text-stone-600 leading-relaxed font-normal">
               Platform perancangan agenda ringkas untuk short stay 2–4 hari. Senaraikan apa yang ingin dilakukan, susun mengikut hari, dan lihat keseluruhan stay dalam Calendar.

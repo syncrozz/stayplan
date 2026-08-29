@@ -2,6 +2,35 @@ import { Stay, AgendaItem, ChecklistItem, DayType, TimeSlot } from '../types';
 import { TIME_SLOTS, PRIORITY_CONFIG, DAY_TYPE_CONFIG } from './constants';
 
 /**
+ * Returns today's local date string in YYYY-MM-DD format based on the user's local timezone.
+ */
+export function getLocalTodayDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns a local date string in YYYY-MM-DD offset by daysToAdd from a given date or today.
+ */
+export function getLocalDateWithOffset(daysToAdd: number = 0, baseDateStr?: string): string {
+  let baseDate: Date;
+  if (baseDateStr) {
+    const [y, m, d] = baseDateStr.split('-').map(Number);
+    baseDate = new Date(y, m - 1, d);
+  } else {
+    baseDate = new Date();
+  }
+  baseDate.setDate(baseDate.getDate() + daysToAdd);
+  const year = baseDate.getFullYear();
+  const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+  const day = String(baseDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Returns day type ('travel_day' | 'stay_day') for a given 1-based day number.
  * Default rule:
  * - Start day (1) = travel_day

@@ -162,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons & Auth Gate */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Explicit Save & Sync Button */}
+            {/* Explicit Sync Button */}
             <button
               id="header-save-sync-btn"
               onClick={handleManualSync}
@@ -172,22 +172,22 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-400/50 animate-pulse'
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white'
               }`}
-              title="Simpan semua perubahan dan sync ke Google Account"
+              title="Sync semua perubahan ke akaun Google"
             >
               {isSyncing ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Save className="w-3.5 h-3.5" />
+                <RefreshCw className="w-3.5 h-3.5" />
               )}
               <span className="hidden sm:inline">
                 {isSyncing
-                  ? 'Menyimpan...'
+                  ? 'Syncing...'
                   : hasUnsavedChanges
-                  ? `Simpan (${unsavedCount})`
-                  : 'Simpan & Sync'}
+                  ? `Sync (${unsavedCount})`
+                  : 'Sync'}
               </span>
               <span className="sm:hidden">
-                {isSyncing ? '...' : hasUnsavedChanges ? `💾 ${unsavedCount}` : '💾'}
+                {isSyncing ? '...' : hasUnsavedChanges ? `🔄 ${unsavedCount}` : 'Sync'}
               </span>
             </button>
 
@@ -217,10 +217,11 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="header-new-stay-btn"
               onClick={onOpenNewStay}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-95 rounded-xl shadow-xs shadow-amber-600/20 transition-all"
+              title="Cipta Stay Baru"
+              aria-label="Cipta Stay Baru"
+              className="inline-flex items-center justify-center p-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-95 rounded-xl shadow-xs shadow-amber-600/20 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Stay Baru</span>
             </button>
 
             {/* Auth Gate: User Profile / Sign-in Button */}
@@ -332,8 +333,8 @@ export const Header: React.FC<HeaderProps> = ({
                     d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                   />
                 </svg>
-                <span className="hidden sm:inline">Log Masuk Google</span>
-                <span className="sm:hidden">Log Masuk</span>
+                <span className="hidden sm:inline">Login</span>
+                <span className="sm:hidden">Login</span>
               </button>
             )}
           </div>

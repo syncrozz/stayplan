@@ -302,7 +302,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
               className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-xs transition-all cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              <span>{isEditing ? 'Simpan & Sync Perubahan' : 'Simpan & Sync ke Google'}</span>
+              <span>Simpan</span>
             </button>
           </div>
         </form>

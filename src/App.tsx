@@ -13,10 +13,11 @@ import { StaySelectorModal } from './components/StaySelectorModal';
 import { ActivityModal } from './components/ActivityModal';
 import { ShareExportModal } from './components/ShareExportModal';
 import { AuthModal } from './components/AuthModal';
+import { SaveSyncFloatingBar } from './components/SaveSyncFloatingBar';
 import { ShowcaseIntroHero } from './components/ShowcaseIntroHero';
 import { WalkthroughModal } from './components/WalkthroughModal';
 import { STAY_TYPES } from './utils/constants';
-import { formatDateRange, formatStaySummary } from './utils/formatters';
+import { formatDateRange, formatStaySummary, getLocalTodayDate, getLocalDateWithOffset } from './utils/formatters';
 import { Stay, AgendaItem, TimeSlot } from './types';
 import {
   Calendar,
@@ -153,8 +154,9 @@ function StayPlanApp() {
       return;
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    const end = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const today = getLocalTodayDate();
+    const end3Days = getLocalDateWithOffset(2, today);
+    const end2Days = getLocalDateWithOffset(1, today);
 
     if (templateType === 'balik_kampung') {
       addStay({
@@ -162,7 +164,7 @@ function StayPlanApp() {
         type: 'balik_kampung',
         durationDays: 3,
         startDate: today,
-        endDate: end,
+        endDate: end3Days,
         location: 'Rumah Tok, Kampung',
         companions: ['Keluarga'],
         importantNotes: 'Fokus santai bersama orang tua dan elakkan jadual terlalu padat.'
@@ -173,7 +175,7 @@ function StayPlanApp() {
         type: 'homestay',
         durationDays: 3,
         startDate: today,
-        endDate: end,
+        endDate: end3Days,
         location: 'Homestay Santai',
         companions: ['Keluarga & Anak-anak'],
         importantNotes: 'Masa rehat dan aktiviti santai bersama anak-anak.'
@@ -184,7 +186,7 @@ function StayPlanApp() {
         type: 'short_getaway',
         durationDays: 2,
         startDate: today,
-        endDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        endDate: end2Days,
         location: 'Short Stay Destination',
         companions: ['Pasangan / Kawan'],
         importantNotes: 'Recharge tenaga dan nikmati makanan enak.'
@@ -656,6 +658,9 @@ function StayPlanApp() {
         onClose={() => setIsWalkthroughOpen(false)}
         onExploreDemo={handleExploreDemo}
       />
+
+      {/* Floating Save & Sync notification bar */}
+      <SaveSyncFloatingBar />
 
       {/* Lightweight Google Auth Gate Modal */}
       <AuthModal />

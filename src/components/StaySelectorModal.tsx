@@ -185,15 +185,15 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1.5 self-end sm:self-center">
+                {/* Actions Bar (Right of Card) */}
+                <div className="flex items-center justify-end gap-1.5 self-end sm:self-center">
                   {!isActive && (
                     <button
                       onClick={() => {
                         setActiveStayId(stay.id);
                         onClose();
                       }}
-                      className="px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-200 rounded-lg transition-colors"
+                      className="px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
                     >
                       Buka
                     </button>
@@ -209,7 +209,7 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                       onEditStay(stay);
                     }}
                     title="Sunting Stay"
-                    className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-lg transition-colors"
+                    className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -223,7 +223,7 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                       duplicateStay(stay.id);
                     }}
                     title="Salin / Duplikasi Stay"
-                    className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-lg transition-colors"
+                    className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
                   >
                     <Copy className="w-4 h-4" />
                   </button>
@@ -236,7 +236,7 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                         }
                       }}
                       title="Padam Stay"
-                      className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      className="p-2 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -273,29 +273,29 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
           </div>
         )}
 
-        {/* Data Backup & Cloud Sync */}
-        <div className="pt-4 border-t border-stone-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs text-stone-600">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleForceSync}
-              disabled={isSyncing}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Sync...' : '⚡ Paksa Sync Cloud (Sync)'}</span>
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between sm:justify-end gap-2">
+        {/* Data Backup & Cloud Sync (Simpan Positioned at Bottom-Right) */}
+        <div className="pt-4 border-t border-stone-200 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs text-stone-600">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
             <span className="text-[11px] text-stone-400">Sandaran fail:</span>
             <button
               type="button"
               onClick={handleExport}
-              className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-xl transition-colors"
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-xl transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               Eksport JSON
+            </button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleForceSync}
+              disabled={isSyncing}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer w-full sm:w-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-white ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Menyimpan...' : 'Simpan'}</span>
             </button>
           </div>
         </div>

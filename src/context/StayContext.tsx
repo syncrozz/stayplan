@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Stay, AgendaItem, ChecklistItem, StayType } from '../types';
 import { SHOWCASE_STAYS, SHOWCASE_AGENDA_ITEMS, SHOWCASE_CHECKLIST_ITEMS } from '../data/defaultStays';
+import { getLocalTodayDate, getLocalDateWithOffset } from '../utils/formatters';
 import { useAuth } from './AuthContext';
 import { db } from '../lib/firebase';
 import {
@@ -219,8 +220,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         SHOWCASE_CHECKLIST_ITEMS.forEach((c) => checklistMap.set(c.id, { ...c, userId: user.uid }));
       }
 
-      // 2. Perform write batch to Firestore for all collected items
       const staysToPush = Array.from(stayMap.values());
+      const agendasToPush = Array.from(agendaMap.values());
+      const checklistsToPush = Array.from(checklistMap.values());
+
+      // Save to local cache immediately to guarantee 0 data loss
+      saveLocalData(getUserCacheKey(user.uid, 'stays'), staysToPush);
+      saveLocalData(getUserCacheKey(user.uid, 'agenda'), agendasToPush);
+      saveLocalData(getUserCacheKey(user.uid, 'checklist'), checklistsToPush);
+
+      // 2. Perform write batch to Firestore for all collected items
       const batch = writeBatch(db);
 
       for (const stay of staysToPush) {
@@ -228,14 +237,14 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         batch.set(stayRef, sanitizeForFirestore<Stay>({ ...stay, userId: user.uid, updatedAt: Date.now() }), { merge: true });
 
         // Push matching agendas
-        const matchingAgendas = Array.from(agendaMap.values()).filter((a) => a.stayId === stay.id);
+        const matchingAgendas = agendasToPush.filter((a) => a.stayId === stay.id);
         for (const ag of matchingAgendas) {
           const aRef = doc(db, 'users', user.uid, 'stays', stay.id, 'agendaItems', ag.id);
           batch.set(aRef, sanitizeForFirestore<AgendaItem>({ ...ag, userId: user.uid }), { merge: true });
         }
 
         // Push matching checklists
-        const matchingChecklists = Array.from(checklistMap.values()).filter((c) => c.stayId === stay.id);
+        const matchingChecklists = checklistsToPush.filter((c) => c.stayId === stay.id);
         for (const chk of matchingChecklists) {
           const cRef = doc(db, 'users', user.uid, 'stays', stay.id, 'checklistItems', chk.id);
           batch.set(cRef, sanitizeForFirestore<ChecklistItem>({ ...chk, userId: user.uid }), { merge: true });
@@ -244,41 +253,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await batch.commit();
 
-      // 3. Directly pull fresh ground-truth from Firestore to verify synchronization
-      const staysSnapshot = await getDocs(collection(db, 'users', user.uid, 'stays'));
-      const confirmedStays: Stay[] = [];
-      const confirmedAgendas: AgendaItem[] = [];
-      const confirmedChecklists: ChecklistItem[] = [];
+      // Update in-memory state directly without redundant costly read loops
+      setUserStays(staysToPush);
+      setUserAgendaItems(agendasToPush);
+      setUserChecklistItems(checklistsToPush);
 
-      for (const stayDoc of staysSnapshot.docs) {
-        const sData = stayDoc.data() as Stay;
-        confirmedStays.push(sData);
-
-        // Fetch subcollections for this stay
-        try {
-          const aSnap = await getDocs(collection(db, 'users', user.uid, 'stays', stayDoc.id, 'agendaItems'));
-          aSnap.forEach((d) => confirmedAgendas.push(d.data() as AgendaItem));
-
-          const cSnap = await getDocs(collection(db, 'users', user.uid, 'stays', stayDoc.id, 'checklistItems'));
-          cSnap.forEach((d) => confirmedChecklists.push(d.data() as ChecklistItem));
-        } catch (subErr) {
-          console.warn(`Subcollection pull note for stay ${stayDoc.id}:`, subErr);
-        }
-      }
-
-      // Sort descending by date
-      confirmedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-      setUserStays(confirmedStays);
-      setUserAgendaItems(confirmedAgendas);
-      setUserChecklistItems(confirmedChecklists);
-
-      saveLocalData(getUserCacheKey(user.uid, 'stays'), confirmedStays);
-      saveLocalData(getUserCacheKey(user.uid, 'agenda'), confirmedAgendas);
-      saveLocalData(getUserCacheKey(user.uid, 'checklist'), confirmedChecklists);
-
-      if (confirmedStays.length > 0) {
-        setActiveStayIdState((prev) => (prev && confirmedStays.some((s) => s.id === prev) ? prev : confirmedStays[0].id));
+      if (staysToPush.length > 0) {
+        setActiveStayIdState((prev) => (prev && staysToPush.some((s) => s.id === prev) ? prev : staysToPush[0].id));
       }
 
       const now = Date.now();
@@ -288,14 +269,29 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return {
         success: true,
-        message: `Berjaya di-sync! ${confirmedStays.length} pelan stay, ${confirmedAgendas.length} aktiviti dan ${confirmedChecklists.length} item semakan aktif di akaun Google anda.`,
-        staysCount: confirmedStays.length
+        message: `Berjaya di-sync ke Google Cloud! (${staysToPush.length} Stay, ${agendasToPush.length} aktiviti, ${checklistsToPush.length} item semakan)`,
+        staysCount: staysToPush.length
       };
     } catch (err: any) {
       console.error('Force Cloud Sync Error:', err);
-      const errMsg = err?.message || 'Gagal menyelaraskan dengan Firestore';
-      setSyncError(errMsg);
-      return { success: false, message: `Ralat sync: ${errMsg}`, staysCount: 0 };
+      const rawMsg = err?.message || String(err);
+      const isQuota =
+        rawMsg.toLowerCase().includes('quota') ||
+        rawMsg.toLowerCase().includes('resource-exhausted') ||
+        rawMsg.toLowerCase().includes('resource_exhausted');
+
+      let friendlyMsg = rawMsg;
+      if (isQuota) {
+        friendlyMsg =
+          'Kuota harian Firestore telah tercapai (akan reset automatik esok). Data anda selamat disimpan secara tempatan (Local Storage/Cache) dan tidak hilang.';
+      } else if (rawMsg.includes('permission') || rawMsg.includes('insufficient')) {
+        friendlyMsg = 'Kebenaran capaian ditolak. Sila pastikan anda log masuk dengan akaun Google yang sah.';
+      } else if (rawMsg.includes('offline') || rawMsg.includes('network') || rawMsg.includes('unavailable')) {
+        friendlyMsg = 'Sambungan rangkaian terputus. Data disimpan di storan peranti dan akan disegerakkan semula.';
+      }
+
+      setSyncError(friendlyMsg);
+      return { success: false, message: friendlyMsg, staysCount: 0 };
     } finally {
       setIsSyncing(false);
     }
@@ -1298,10 +1294,8 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         location = 'Resort / Staycation';
       }
 
-      const today = new Date();
-      const startDate = today.toISOString().split('T')[0];
-      const end = new Date(Date.now() + (durationDays - 1) * 24 * 60 * 60 * 1000);
-      const endDate = end.toISOString().split('T')[0];
+      const startDate = getLocalTodayDate();
+      const endDate = getLocalDateWithOffset(durationDays - 1, startDate);
 
       return await addStay({
         title,

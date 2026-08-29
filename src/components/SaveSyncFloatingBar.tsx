@@ -130,8 +130,8 @@ export const SaveSyncFloatingBar: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4 text-white" />
-                  <span>💾 Simpan & Sync</span>
+                  <RefreshCw className="w-4 h-4 text-white" />
+                  <span>Sync</span>
                 </>
               )}
             </button>

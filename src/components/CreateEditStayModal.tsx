@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Wifi, Phone, KeyRound, Users, Plus, Trash2, Sparkles, Check, FileText, Car, Home, Save } from 'lucide-react';
 import { Stay, StayType, DayType } from '../types';
 import { STAY_TYPES, DAY_TYPE_CONFIG } from '../utils/constants';
-import { getDayType, getStaySummaryCounts, getDayContextLabel, toTitleCase } from '../utils/formatters';
+import { getDayType, getStaySummaryCounts, getDayContextLabel, toTitleCase, getLocalTodayDate, getLocalDateWithOffset } from '../utils/formatters';
 
 // Helper to calculate difference in calendar days (inclusive of start & end day)
 function getDaysDifference(startDateStr: string, endDateStr: string): number {
@@ -101,13 +101,14 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
       }
       setDayTypes(initialDayTypes);
     } else {
-      // Default new stay
+      // Default new stay - always defaults to current local date (Hari Ini)
       setTitle('Balik Kampung Hujung Minggu');
       setType('balik_kampung');
-      setDurationDays(3);
-      const today = new Date().toISOString().split('T')[0];
+      const defaultDuration = 3;
+      setDurationDays(defaultDuration);
+      const today = getLocalTodayDate();
       setStartDate(today);
-      const end = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const end = getLocalDateWithOffset(defaultDuration - 1, today);
       setEndDate(end);
       setLocation('');
       setAddress('');
@@ -771,7 +772,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-xs transition-all cursor-pointer"
               >
                 <Save className="w-4 h-4" />
-                <span>{isEditing ? 'Simpan & Sync Perubahan' : 'Mulakan & Sync ke Google'}</span>
+                <span>Simpan</span>
               </button>
             </div>
           </div>
