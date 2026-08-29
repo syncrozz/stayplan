@@ -15,7 +15,9 @@ export const AuthModal: React.FC = () => {
       setErrorMsg(null);
       await signInWithGoogle();
     } catch (err: any) {
-      if (err?.code !== 'auth/popup-closed-by-user') {
+      if (err?.code === 'auth/unauthorized-domain') {
+        setErrorMsg('Domain ini (stayplan.syncrozz.com) belum disenaraikan dalam Authorized Domains di Firebase Console.');
+      } else if (err?.code !== 'auth/popup-closed-by-user') {
         setErrorMsg('Gagal log masuk dengan Google. Sila cuba lagi.');
       }
     } finally {
