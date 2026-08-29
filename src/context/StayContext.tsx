@@ -133,6 +133,44 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Standard Firebase Authenticated User
     setIsLoadingStays(true);
+
+    // Auto-migrate any local guest data from this device to the user's Firestore cloud account
+    const localStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
+    const localAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
+    const localChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
+
+    if (localStays.length > 0) {
+      (async () => {
+        try {
+          for (const s of localStays) {
+            const stayDocRef = doc(db, 'users', user.uid, 'stays', s.id);
+            await setDoc(stayDocRef, { ...s, userId: user.uid, updatedAt: Date.now() }, { merge: true });
+
+            const sAgendas = localAgenda.filter((a) => a.stayId === s.id);
+            for (const a of sAgendas) {
+              const aRef = doc(db, 'users', user.uid, 'stays', s.id, 'agendaItems', a.id);
+              await setDoc(aRef, { ...a, userId: user.uid }, { merge: true });
+            }
+
+            const sChecklists = localChecklist.filter((c) => c.stayId === s.id);
+            for (const c of sChecklists) {
+              const cRef = doc(db, 'users', user.uid, 'stays', s.id, 'checklistItems', c.id);
+              await setDoc(cRef, { ...c, userId: user.uid }, { merge: true });
+            }
+          }
+          // Clear local cache once safely migrated to cloud
+          try {
+            localStorage.removeItem(LOCAL_STAYS_KEY);
+            localStorage.removeItem(LOCAL_AGENDA_KEY);
+            localStorage.removeItem(LOCAL_CHECKLIST_KEY);
+            localStorage.removeItem(LOCAL_ACTIVE_ID_KEY);
+          } catch {}
+        } catch (migErr) {
+          console.warn('Auto-migration note:', migErr);
+        }
+      })();
+    }
+
     const staysRef = collection(db, 'users', user.uid, 'stays');
     const staysQuery = query(staysRef, orderBy('createdAt', 'desc'));
 

@@ -11,7 +11,9 @@ import {
   User as UserIcon,
   Shield,
   Sparkles,
-  Lock
+  Lock,
+  Cloud,
+  Smartphone
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -27,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenShare
 }) => {
   const { activeStay, isPersonalMode } = useStay();
-  const { user, userProfile, role, isAuthenticated, openAuthModal, signOut } = useAuth();
+  const { user, userProfile, role, isAuthenticated, isGuest, openAuthModal, signOut } = useAuth();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -70,10 +72,19 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-xl sm:text-2xl font-extrabold text-stone-900 tracking-tight font-sans">
                   Stay<span className="text-amber-600">Plan</span>
                 </h1>
-                {isAuthenticated ? (
-                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
-                    <span>My Workspace</span>
+                {isAuthenticated && !isGuest ? (
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200" title="Data disegerakkan ke Awan (Cloud Sync)">
+                    <Cloud className="w-2.5 h-2.5 text-emerald-600" />
+                    <span>Cloud Sync</span>
+                  </span>
+                ) : isGuest ? (
+                  <span
+                    onClick={() => openAuthModal('Log masuk dengan Google untuk sync pelan ini ke semua peranti anda.')}
+                    className="cursor-pointer hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors"
+                    title="Mod Tempatan (Device ini sahaja). Klik untuk Log Masuk & Sync."
+                  >
+                    <Smartphone className="w-2.5 h-2.5 text-amber-600" />
+                    <span>Mod Tempatan</span>
                   </span>
                 ) : (
                   <span

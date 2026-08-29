@@ -30,7 +30,9 @@ import {
   Lock,
   Compass,
   ShieldAlert,
-  LayoutGrid
+  LayoutGrid,
+  Cloud,
+  Smartphone
 } from 'lucide-react';
 
 function StayPlanApp() {
@@ -51,7 +53,7 @@ function StayPlanApp() {
     isLoading
   } = useStay();
 
-  const { isAuthenticated, openAuthModal } = useAuth();
+  const { user, isAuthenticated, isGuest, openAuthModal } = useAuth();
 
   // Modals state
   const [isSupportOpen, setIsSupportOpen] = useState(false);
@@ -300,15 +302,56 @@ function StayPlanApp() {
         onOpenSupport={() => setIsSupportOpen(true)}
       />
 
-      {/* Unauthenticated Mode Exploration Notification Banner */}
-      {!isAuthenticated && (
+      {/* Device Sync & Persistence Status Notification Banner */}
+      {!isAuthenticated ? (
         <div className="bg-amber-500/10 border-b border-amber-200/80">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center gap-2 text-xs text-amber-950">
-            <span className="p-1 rounded-md bg-amber-600 text-white shrink-0">
-              <Compass className="w-3.5 h-3.5" />
-            </span>
-            <span>
-              <strong>Mod Eksplorasi (Showcase):</strong> Anda sedang melihat contoh struktur StayPlan. Log masuk dengan Google untuk menyimpan pelan peribadi anda di awan.
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-950">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-md bg-amber-600 text-white shrink-0">
+                <Compass className="w-3.5 h-3.5" />
+              </span>
+              <span>
+                <strong>Mod Eksplorasi (Showcase):</strong> Anda sedang melihat contoh. Log masuk dengan Google untuk menyimpan pelan peribadi anda di awan & buka di mana-mana peranti.
+              </span>
+            </div>
+            <button
+              onClick={() => openAuthModal('Log masuk untuk mula mencipta pelan stay peribadi anda.')}
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[11px] shrink-0 transition-colors cursor-pointer"
+            >
+              Log Masuk Google
+            </button>
+          </div>
+        </div>
+      ) : isGuest ? (
+        <div className="bg-amber-50 border-b border-amber-300/80">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-950">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-md bg-amber-700 text-white shrink-0">
+                <Smartphone className="w-3.5 h-3.5" />
+              </span>
+              <span>
+                <strong>Mod Tempatan (Device ini sahaja):</strong> Perubahan anda disimpan pada pelayar ini. Log masuk dengan Google untuk menyelaraskan data ini ke awan supaya boleh dibuka di telefon/laptop lain.
+              </span>
+            </div>
+            <button
+              onClick={() => openAuthModal('Log masuk dengan Google untuk sync semua data ke awan & telefon lain.')}
+              className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg text-[11px] shrink-0 transition-colors cursor-pointer"
+            >
+              Sync ke Google Cloud
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-emerald-50/70 border-b border-emerald-200/80">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 flex items-center justify-between gap-2 text-[11px] text-emerald-950">
+            <div className="flex items-center gap-1.5">
+              <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>
+                <strong>Cloud Sync Aktif:</strong> Diselaraskan ke akaun <strong>{user?.email}</strong>. Data anda sentiasa sama di semua peranti yang anda log masuk.
+              </span>
+            </div>
+            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+              ● Terselaras Masa-Nyata
             </span>
           </div>
         </div>
