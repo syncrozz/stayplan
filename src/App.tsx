@@ -568,7 +568,7 @@ function StayPlanApp() {
           </button>
         </div>
 
-        {/* Tab 1: Perancangan & Brain Dump (Step 1: List & Organise) */}
+        {/* Tab 1: Perancangan Aktiviti (Step 1: List & Organise) */}
         {activeTab === 'plan' && (
           <PlanBoard
             stay={activeStay}

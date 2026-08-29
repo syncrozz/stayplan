@@ -192,7 +192,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
               <span>📋 Langkah 1: Kumpul Perkara Dirancang</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
-              Perancangan Aktiviti & Brain Dump
+              Perancangan Aktiviti
             </h1>
             <p className="text-xs sm:text-sm text-stone-500 mt-1 max-w-2xl">
               Senaraikan semua perkara yang ingin anda buat sepanjang stay ini. Jangan risau tentang memilih tarikh atau waktu dahulu—kumpulkan segalanya di sini, kemudian susun ke dalam hari aktiviti dengan mudah.
@@ -261,7 +261,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
       <div className="bg-white rounded-3xl border border-stone-200 shadow-xs p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <label htmlFor="quick-brain-dump-input" className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-            <span>✨ Tambah Cepat Perkara Dirancang (Brain Dump)</span>
+            <span>✨ Tambah Cepat Perkara Dirancang</span>
           </label>
           <span className="text-[11px] text-stone-400">Tekan Enter atau klik Tambah</span>
         </div>

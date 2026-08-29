@@ -4,7 +4,6 @@ import {
   Lock,
   Play,
   ArrowRight,
-  Brain,
   Layers,
   CalendarDays,
   Calendar,
@@ -112,16 +111,16 @@ export const ShowcaseIntroHero: React.FC<ShowcaseIntroHeroProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-          {/* Step 1: Brain Dump */}
+          {/* Step 1: Kumpul Idea */}
           <div className="p-3 rounded-2xl bg-stone-50/90 border border-stone-200/80 flex items-start gap-2.5">
             <span className="text-xl p-1.5 rounded-xl bg-white border border-stone-200 shadow-2xs shrink-0">
-              🧠
+              📝
             </span>
             <div>
               <div className="flex items-center gap-1">
                 <span className="text-[10px] font-bold text-amber-700">1. Kumpul</span>
                 <span className="text-[10px] text-stone-400">•</span>
-                <h4 className="text-xs font-bold text-stone-900">Brain Dump</h4>
+                <h4 className="text-xs font-bold text-stone-900">Kumpul Idea</h4>
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
                 Senaraikan semua aktiviti & keinginan tanpa risau susunan masa dahulu.

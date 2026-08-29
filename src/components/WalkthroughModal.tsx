@@ -25,9 +25,9 @@ interface WalkthroughModalProps {
 const STEPS = [
   {
     step: 1,
-    title: 'Kumpul Idea (Brain Dump)',
+    title: 'Kumpul Idea & Aktiviti',
     tagline: 'Senaraikan apa yang ingin dilakukan',
-    icon: '🧠',
+    icon: '📝',
     desc: 'Tulis semua perkara atau tempat yang anda ingin kunjungi tanpa risau tentang susunan masa dahulu.',
     tip: 'Contoh: Makan nasi dagang, ziarah Tok, beli keropok lekor, santai kopi petang.'
   },
