@@ -116,11 +116,24 @@ export const SHOWCASE_AGENDA_ITEMS: AgendaItem[] = [
     isCompleted: false
   },
   {
+    id: 'showcase-a4-mid',
+    stayId: 'showcase-family-getaway',
+    dayNumber: 2,
+    timeSlot: 'midday',
+    timeSpecific: '12:30 tengahari',
+    title: 'Makan Tengahari Masakan Tempatan & Solat Zohor',
+    description: 'Menikmati hidangan tengahari bersama dan berehat seketika.',
+    priority: 'food',
+    locationName: 'Restoran Pilihan Tempatan',
+    personInCharge: 'Semua',
+    isCompleted: false
+  },
+  {
     id: 'showcase-a5',
     stayId: 'showcase-family-getaway',
     dayNumber: 2,
     timeSlot: 'afternoon',
-    timeSpecific: '2:00 petang',
+    timeSpecific: '4:30 petang',
     title: 'Waktu Bebas & Minum Petang',
     description: 'Beri ruang untuk berehat atau aktiviti ringan tanpa jadual padat.',
     priority: 'rest',

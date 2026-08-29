@@ -16,8 +16,10 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   role: UserRole;
   isAuthenticated: boolean;
+  isGuest: boolean;
   isLoading: boolean;
   signInWithGoogle: () => Promise<void>;
+  continueAsGuest: () => void;
   signOut: () => Promise<void>;
   // Auth prompt modal management
   isAuthModalOpen: boolean;
@@ -29,18 +31,56 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const GUEST_STORAGE_KEY = 'stayplan_guest_session';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isGuest, setIsGuest] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(GUEST_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalContext, setAuthModalContext] = useState<string>('');
   const [pendingCallback, setPendingCallback] = useState<(() => void) | null>(null);
 
   useEffect(() => {
+    // Check if there was a saved guest session
+    if (isGuest && !user) {
+      const mockGuestUser = {
+        uid: 'guest-local-user',
+        email: 'tetamu@stayplan.my',
+        displayName: 'Pengguna Tetamu (Mod Tempatan)',
+        photoURL: null,
+        isAnonymous: true
+      } as unknown as User;
+
+      setUser(mockGuestUser);
+      setUserProfile({
+        uid: 'guest-local-user',
+        email: 'tetamu@stayplan.my',
+        displayName: 'Pengguna Tetamu (Mod Tempatan)',
+        photoURL: null,
+        role: 'USER',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+      setIsLoading(false);
+    }
+  }, [isGuest]);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
       if (currentUser) {
+        setIsGuest(false);
+        try {
+          localStorage.removeItem(GUEST_STORAGE_KEY);
+        } catch {}
+        setUser(currentUser);
         try {
           const userRef = doc(db, 'users', currentUser.uid);
           const snap = await getDoc(userRef);
@@ -87,21 +127,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
       } else {
-        setUserProfile(null);
+        if (!isGuest) {
+          setUser(null);
+          setUserProfile(null);
+        }
       }
       setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isGuest]);
 
   const signInWithGoogle = async () => {
     try {
       setIsLoading(true);
       const result = await signInWithPopup(auth, googleProvider);
-      if (result.user && pendingCallback) {
-        pendingCallback();
-        setPendingCallback(null);
+      if (result.user) {
+        setIsGuest(false);
+        try {
+          localStorage.removeItem(GUEST_STORAGE_KEY);
+        } catch {}
+        if (pendingCallback) {
+          pendingCallback();
+          setPendingCallback(null);
+        }
       }
       setIsAuthModalOpen(false);
     } catch (error: any) {
@@ -112,8 +161,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const continueAsGuest = () => {
+    setIsGuest(true);
+    try {
+      localStorage.setItem(GUEST_STORAGE_KEY, 'true');
+    } catch {}
+
+    const mockGuestUser = {
+      uid: 'guest-local-user',
+      email: 'tetamu@stayplan.my',
+      displayName: 'Pengguna Tetamu (Mod Tempatan)',
+      photoURL: null,
+      isAnonymous: true
+    } as unknown as User;
+
+    setUser(mockGuestUser);
+    setUserProfile({
+      uid: 'guest-local-user',
+      email: 'tetamu@stayplan.my',
+      displayName: 'Pengguna Tetamu (Mod Tempatan)',
+      photoURL: null,
+      role: 'USER',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+
+    if (pendingCallback) {
+      pendingCallback();
+      setPendingCallback(null);
+    }
+    setIsAuthModalOpen(false);
+  };
+
   const signOut = async () => {
     try {
+      setIsGuest(false);
+      try {
+        localStorage.removeItem(GUEST_STORAGE_KEY);
+      } catch {}
       await firebaseSignOut(auth);
       setUser(null);
       setUserProfile(null);
@@ -150,8 +235,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userProfile,
         role,
         isAuthenticated: !!user,
+        isGuest,
         isLoading,
         signInWithGoogle,
+        continueAsGuest,
         signOut,
         isAuthModalOpen,
         authModalContext,

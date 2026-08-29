@@ -86,13 +86,14 @@ export function CalendarView({
     }
   };
 
-  // Sort items for a day: morning -> afternoon -> evening -> flexible
+  // Sort items for a day: morning -> midday -> afternoon -> evening -> flexible
   const getSortedDayItems = (dayNum: number) => {
     const slotRank: Record<TimeSlot, number> = {
       morning: 1,
-      afternoon: 2,
-      evening: 3,
-      flexible: 4
+      midday: 2,
+      afternoon: 3,
+      evening: 4,
+      flexible: 5
     };
     return stayAgendas
       .filter((item) => item.dayNumber === dayNum)

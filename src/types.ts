@@ -19,7 +19,7 @@ export type StayType =
   | 'short_trip'
   | 'custom';
 
-export type TimeSlot = 'morning' | 'afternoon' | 'evening' | 'flexible';
+export type TimeSlot = 'morning' | 'midday' | 'afternoon' | 'evening' | 'flexible';
 
 export type ActivityPriority = 'must_do' | 'optional' | 'food' | 'rest' | 'logistics';
 

@@ -102,7 +102,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
             {isEditing ? 'Kemaskini Agenda' : 'Tambah Agenda Stay'}
           </h2>
           <p className="text-xs text-stone-500 mt-0.5">
-            Rancang aktiviti ringkas mengikut waktu (Pagi, Petang, Malam) tanpa terikat jadual jam yang ketat.
+            Rancang aktiviti ringkas mengikut waktu (Pagi, Tengahari, Petang, Malam) tanpa terikat jadual jam yang ketat.
           </p>
         </div>
 
@@ -145,9 +145,9 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
               </div>
             </div>
 
-            {/* 3 Primary Time of Day Blocks */}
-            <div className="grid grid-cols-3 gap-2">
-              {(['morning', 'afternoon', 'evening'] as TimeSlot[]).map((slotKey) => {
+            {/* 4 Primary Time of Day Blocks */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(['morning', 'midday', 'afternoon', 'evening'] as TimeSlot[]).map((slotKey) => {
                 const meta = TIME_SLOTS[slotKey];
                 const isSelected = timeSlot === slotKey;
                 return (
@@ -155,14 +155,14 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
                     key={slotKey}
                     type="button"
                     onClick={() => setTimeSlot(slotKey)}
-                    className={`py-2.5 px-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
+                    className={`py-2.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all ${
                       isSelected
                         ? 'bg-amber-600 border-amber-600 text-white shadow-xs font-bold'
                         : 'bg-white hover:bg-stone-100 border-stone-200 text-stone-700 font-semibold'
                     }`}
                   >
                     <span className="text-xl">{meta.icon}</span>
-                    <span className="text-xs">{meta.label}</span>
+                    <span className="text-[11px] sm:text-xs whitespace-nowrap">{meta.label}</span>
                   </button>
                 );
               })}

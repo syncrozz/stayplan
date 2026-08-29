@@ -1,28 +1,43 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, ShieldCheck, Sparkles, Lock, ArrowRight, Loader2 } from 'lucide-react';
+import { X, ShieldCheck, Sparkles, Lock, ArrowRight, Loader2, Copy, Check, ExternalLink, UserCheck } from 'lucide-react';
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, signInWithGoogle, authModalContext } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, signInWithGoogle, continueAsGuest, authModalContext } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   if (!isAuthModalOpen) return null;
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
 
   const handleGoogleSignIn = async () => {
     try {
       setIsSigningIn(true);
       setErrorMsg(null);
+      setIsUnauthorizedDomain(false);
       await signInWithGoogle();
     } catch (err: any) {
       if (err?.code === 'auth/unauthorized-domain') {
-        const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'stayplan.syncrozz.com';
-        setErrorMsg(`Domain semasa (${currentHostname}) belum dimasukkan dalam senarai 'Authorized Domains' di Firebase Console (projek: syncrozz-platform).`);
+        setIsUnauthorizedDomain(true);
+        setErrorMsg(`Domain semasa (${currentHostname}) belum didaftarkan dalam senarai Authorized Domains Firebase.`);
       } else if (err?.code !== 'auth/popup-closed-by-user') {
-        setErrorMsg('Gagal log masuk dengan Google. Sila cuba lagi.');
+        setErrorMsg('Gagal log masuk dengan Google. Sila cuba lagi atau guna Mod Tetamu.');
       }
     } finally {
       setIsSigningIn(false);
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (currentHostname) {
+      try {
+        await navigator.clipboard.writeText(currentHostname);
+        setCopiedDomain(true);
+        setTimeout(() => setCopiedDomain(false), 2000);
+      } catch {}
     }
   };
 
@@ -30,7 +45,7 @@ export const AuthModal: React.FC = () => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         id="auth-modal-card"
-        className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-stone-200 relative overflow-hidden text-stone-900"
+        className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-stone-200 relative overflow-hidden text-stone-900"
       >
         {/* Close Button */}
         <button
@@ -58,29 +73,71 @@ export const AuthModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Feature Highlights */}
-        <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 space-y-2.5 mb-6 text-xs text-stone-700">
-          <div className="flex items-start gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-            <span>
-              <strong>Ruang Peribadi Selamat:</strong> Setiap stay, agenda & checklist dimiliki secara eksklusif oleh akaun anda.
-            </span>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>
-              <strong>Autosimpan Awan (Cloud Sync):</strong> Akses pelan anda di mana-mana sahaja dari telefon atau komputer.
-            </span>
-          </div>
-        </div>
+        {/* Unauthorized Domain Explainer Banner */}
+        {isUnauthorizedDomain && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-stone-800 space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-900 text-sm">Pengesahan Domain Firebase Diperlukan</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-200/70 text-amber-900 font-semibold text-[10px]">
+                syncrozz-platform
+              </span>
+            </div>
 
-        {errorMsg && (
+            <p className="text-stone-600 leading-relaxed">
+              Untuk mengaktifkan Google Sign In pada persekitaran pratonton ini, masukkan domain berikut ke dalam Firebase Console:
+            </p>
+
+            <div className="flex items-center gap-2 p-2 bg-white rounded-xl border border-amber-300 font-mono text-[11px] text-stone-800 break-all select-all">
+              <span className="flex-1 truncate">{currentHostname}</span>
+              <button
+                type="button"
+                onClick={copyToClipboard}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg font-sans font-semibold text-[11px] transition-colors"
+              >
+                {copiedDomain ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedDomain ? 'Disalin!' : 'Salin Domain'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <a
+                href="https://console.firebase.google.com/project/syncrozz-platform/authentication/settings"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-amber-800 hover:text-amber-950 font-bold underline text-[11px]"
+              >
+                Buka Firebase Console (Authorized Domains)
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Feature Highlights (when no error) */}
+        {!isUnauthorizedDomain && (
+          <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 space-y-2.5 mb-6 text-xs text-stone-700">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Ruang Peribadi Selamat:</strong> Setiap stay, agenda & checklist dimiliki secara eksklusif oleh akaun anda.
+              </span>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Autosimpan Awan (Cloud Sync):</strong> Akses pelan anda di mana-mana sahaja dari telefon atau komputer.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {errorMsg && !isUnauthorizedDomain && (
           <div className="mb-4 p-3 text-xs bg-rose-50 text-rose-700 rounded-xl border border-rose-200">
             {errorMsg}
           </div>
         )}
 
-        {/* Google OAuth Action Button */}
+        {/* Action Buttons */}
         <div className="space-y-3">
           <button
             id="google-signin-btn"
@@ -96,8 +153,7 @@ export const AuthModal: React.FC = () => {
               </>
             ) : (
               <>
-                {/* Google G Logo SVG */}
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
@@ -121,7 +177,18 @@ export const AuthModal: React.FC = () => {
             )}
           </button>
 
-          <p className="text-center text-[11px] text-stone-500 font-medium">
+          {/* Quick Demo/Guest Mode Option */}
+          <button
+            id="guest-signin-btn"
+            type="button"
+            onClick={continueAsGuest}
+            className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-stone-100 hover:bg-stone-200/80 text-stone-700 font-semibold text-xs rounded-2xl border border-stone-200 transition-all active:scale-[0.99] cursor-pointer"
+          >
+            <UserCheck className="w-4 h-4 text-amber-700" />
+            <span>Teruskan sebagai Tetamu (Mod Percubaan / Tempatan)</span>
+          </button>
+
+          <p className="text-center text-[11px] text-stone-500 font-medium pt-1">
             “Your StayPlan is yours. Plan freely. Your space is yours.”
           </p>
         </div>

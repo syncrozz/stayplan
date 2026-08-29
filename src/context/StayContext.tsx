@@ -44,8 +44,31 @@ interface StayContextType {
 
 const StayContext = createContext<StayContextType | undefined>(undefined);
 
+const LOCAL_STAYS_KEY = 'stayplan_local_stays';
+const LOCAL_AGENDA_KEY = 'stayplan_local_agenda';
+const LOCAL_CHECKLIST_KEY = 'stayplan_local_checklist';
+const LOCAL_ACTIVE_ID_KEY = 'stayplan_local_active_id';
+
+function loadLocalData<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn(`Failed reading ${key} from localStorage:`, e);
+  }
+  return fallback;
+}
+
+function saveLocalData<T>(key: string, data: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`Failed writing ${key} to localStorage:`, e);
+  }
+}
+
 export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, requireAuth } = useAuth();
+  const { user, requireAuth, isGuest } = useAuth();
 
   // State for authenticated user stays
   const [userStays, setUserStays] = useState<Stay[]>([]);
@@ -56,17 +79,59 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isPersonalMode = !!user;
 
-  // 1. Subscribe to User's Stays collection when authenticated
+  // 1. Subscribe or load stays
   useEffect(() => {
     if (!user) {
       setUserStays([]);
       setUserAgendaItems([]);
       setUserChecklistItems([]);
-      setActiveStayIdState(SHOWCASE_STAYS[0].id);
+      setActiveStayIdState(SHOWCASE_STAYS[0]?.id || null);
       setIsLoadingStays(false);
       return;
     }
 
+    if (user.uid === 'guest-local-user') {
+      // Guest local storage mode
+      const savedStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
+      const savedAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
+      const savedChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
+      const savedActiveId = loadLocalData<string | null>(LOCAL_ACTIVE_ID_KEY, null);
+
+      if (savedStays.length === 0) {
+        // Initialize with default showcase stays as editable copies for the guest
+        const guestStays: Stay[] = SHOWCASE_STAYS.map(s => ({
+          ...s,
+          userId: 'guest-local-user'
+        }));
+        const guestAgenda: AgendaItem[] = SHOWCASE_AGENDA_ITEMS.map(a => ({
+          ...a,
+          userId: 'guest-local-user'
+        }));
+        const guestChecklist: ChecklistItem[] = SHOWCASE_CHECKLIST_ITEMS.map(c => ({
+          ...c,
+          userId: 'guest-local-user'
+        }));
+
+        setUserStays(guestStays);
+        setUserAgendaItems(guestAgenda);
+        setUserChecklistItems(guestChecklist);
+        setActiveStayIdState(guestStays[0]?.id || null);
+
+        saveLocalData(LOCAL_STAYS_KEY, guestStays);
+        saveLocalData(LOCAL_AGENDA_KEY, guestAgenda);
+        saveLocalData(LOCAL_CHECKLIST_KEY, guestChecklist);
+        saveLocalData(LOCAL_ACTIVE_ID_KEY, guestStays[0]?.id || null);
+      } else {
+        setUserStays(savedStays);
+        setUserAgendaItems(savedAgenda);
+        setUserChecklistItems(savedChecklist);
+        setActiveStayIdState(savedActiveId && savedStays.some(s => s.id === savedActiveId) ? savedActiveId : savedStays[0].id);
+      }
+      setIsLoadingStays(false);
+      return;
+    }
+
+    // Standard Firebase Authenticated User
     setIsLoadingStays(true);
     const staysRef = collection(db, 'users', user.uid, 'stays');
     const staysQuery = query(staysRef, orderBy('createdAt', 'desc'));
@@ -91,7 +156,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoadingStays(false);
       },
       (error) => {
-        // Silently handle when database is still being provisioned in console
         console.warn('Firestore sync note:', error.message || error);
         setIsLoadingStays(false);
       }
@@ -100,10 +164,10 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, [user]);
 
-  // 2. Subscribe to Agenda & Checklist of the currently active stay
+  // 2. Subscribe to Agenda & Checklist of the currently active stay (for Firebase User)
   useEffect(() => {
-    if (!user || !activeStayId) {
-      if (user) {
+    if (!user || user.uid === 'guest-local-user' || !activeStayId) {
+      if (user && user.uid !== 'guest-local-user') {
         setUserAgendaItems([]);
         setUserChecklistItems([]);
       }
@@ -170,7 +234,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveStayIdState(id);
   };
 
-  // --- ACTIONS (Strictly requiring Authenticated Google User) ---
+  // --- ACTIONS (Support both Firebase and Guest/Local mode) ---
 
   const addStay = useCallback(
     async (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>): Promise<string> => {
@@ -179,10 +243,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
-      const stayCol = collection(db, 'users', user.uid, 'stays');
-      const stayDoc = doc(stayCol);
-      const stayId = stayDoc.id;
-
+      const stayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newStay: Stay = {
         ...newStayData,
         id: stayId,
@@ -191,25 +252,14 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: Date.now()
       };
 
-      await setDoc(stayDoc, newStay);
-
-      // Starter essentials checklist
-      const starterChecklist: Array<Omit<ChecklistItem, 'id'>> = [
-        { stayId, userId: user.uid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false },
-        { stayId, userId: user.uid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false },
-        { stayId, userId: user.uid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false }
+      const starterChecklist: ChecklistItem[] = [
+        { id: `chk_${Date.now()}_1`, stayId, userId: user.uid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false },
+        { id: `chk_${Date.now()}_2`, stayId, userId: user.uid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false },
+        { id: `chk_${Date.now()}_3`, stayId, userId: user.uid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false }
       ];
 
-      const batch = writeBatch(db);
-      starterChecklist.forEach((item) => {
-        const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'));
-        batch.set(itemRef, { ...item, id: itemRef.id });
-      });
-
-      // Day 1 Starter Agenda
-      const day1Ref = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'));
-      batch.set(day1Ref, {
-        id: day1Ref.id,
+      const starterAgenda: AgendaItem = {
+        id: `agn_${Date.now()}_1`,
         stayId,
         userId: user.uid,
         dayNumber: 1,
@@ -219,7 +269,42 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: 'Tiba di lokasi, susun barang dan rehat santai.',
         priority: 'must_do',
         isCompleted: false
+      };
+
+      if (user.uid === 'guest-local-user') {
+        setUserStays((prev) => {
+          const next = [newStay, ...prev];
+          saveLocalData(LOCAL_STAYS_KEY, next);
+          return next;
+        });
+        setUserChecklistItems((prev) => {
+          const next = [...prev, ...starterChecklist];
+          saveLocalData(LOCAL_CHECKLIST_KEY, next);
+          return next;
+        });
+        setUserAgendaItems((prev) => {
+          const next = [...prev, starterAgenda];
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        setActiveStayIdState(stayId);
+        saveLocalData(LOCAL_ACTIVE_ID_KEY, stayId);
+        return stayId;
+      }
+
+      // Firebase User Mode
+      const stayCol = collection(db, 'users', user.uid, 'stays');
+      const stayDoc = doc(stayCol, stayId);
+      await setDoc(stayDoc, newStay);
+
+      const batch = writeBatch(db);
+      starterChecklist.forEach((item) => {
+        const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'), item.id);
+        batch.set(itemRef, item);
       });
+
+      const day1Ref = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'), starterAgenda.id);
+      batch.set(day1Ref, starterAgenda);
 
       await batch.commit();
       setActiveStayIdState(stayId);
@@ -234,6 +319,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requireAuth(() => {}, 'Log masuk dengan Google untuk mengemas kini maklumat Stay.');
         return;
       }
+
+      if (user.uid === 'guest-local-user') {
+        setUserStays((prev) => {
+          const next = prev.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: Date.now() } : s));
+          saveLocalData(LOCAL_STAYS_KEY, next);
+          return next;
+        });
+        return;
+      }
+
       const stayRef = doc(db, 'users', user.uid, 'stays', id);
       await updateDoc(stayRef, { ...updates, updatedAt: Date.now() });
     },
@@ -247,7 +342,28 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Delete subcollections
+      if (user.uid === 'guest-local-user') {
+        setUserStays((prev) => {
+          const next = prev.filter((s) => s.id !== id);
+          saveLocalData(LOCAL_STAYS_KEY, next);
+          setActiveStayIdState(next.length > 0 ? next[0].id : null);
+          saveLocalData(LOCAL_ACTIVE_ID_KEY, next.length > 0 ? next[0].id : null);
+          return next;
+        });
+        setUserAgendaItems((prev) => {
+          const next = prev.filter((a) => a.stayId !== id);
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        setUserChecklistItems((prev) => {
+          const next = prev.filter((c) => c.stayId !== id);
+          saveLocalData(LOCAL_CHECKLIST_KEY, next);
+          return next;
+        });
+        return;
+      }
+
+      // Delete subcollections in Firestore
       const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
       const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
 
@@ -273,9 +389,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const target = userStays.find((s) => s.id === id);
       if (!target) return;
 
-      const newStayRef = doc(collection(db, 'users', user.uid, 'stays'));
-      const newStayId = newStayRef.id;
-
+      const newStayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const duplicatedStay: Stay = {
         ...target,
         id: newStayId,
@@ -285,6 +399,46 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: Date.now()
       };
 
+      if (user.uid === 'guest-local-user') {
+        const sourceAgendas = userAgendaItems.filter((a) => a.stayId === id);
+        const dupAgendas: AgendaItem[] = sourceAgendas.map((a, i) => ({
+          ...a,
+          id: `agn_${Date.now()}_${i}`,
+          stayId: newStayId,
+          userId: user.uid,
+          isCompleted: false
+        }));
+
+        const sourceChecklists = userChecklistItems.filter((c) => c.stayId === id);
+        const dupChecklists: ChecklistItem[] = sourceChecklists.map((c, i) => ({
+          ...c,
+          id: `chk_${Date.now()}_${i}`,
+          stayId: newStayId,
+          userId: user.uid,
+          isCompleted: false
+        }));
+
+        setUserStays((prev) => {
+          const next = [duplicatedStay, ...prev];
+          saveLocalData(LOCAL_STAYS_KEY, next);
+          return next;
+        });
+        setUserAgendaItems((prev) => {
+          const next = [...prev, ...dupAgendas];
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        setUserChecklistItems((prev) => {
+          const next = [...prev, ...dupChecklists];
+          saveLocalData(LOCAL_CHECKLIST_KEY, next);
+          return next;
+        });
+        setActiveStayIdState(newStayId);
+        saveLocalData(LOCAL_ACTIVE_ID_KEY, newStayId);
+        return;
+      }
+
+      const newStayRef = doc(collection(db, 'users', user.uid, 'stays'), newStayId);
       const batch = writeBatch(db);
       batch.set(newStayRef, duplicatedStay);
 
@@ -317,7 +471,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await batch.commit();
       setActiveStayIdState(newStayId);
     },
-    [user, userStays, requireAuth]
+    [user, userStays, userAgendaItems, userChecklistItems, requireAuth]
   );
 
   const addAgendaItem = useCallback(
@@ -327,17 +481,27 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
-      const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
-      const docRef = doc(colRef);
+      const newItemId = `agn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newItem: AgendaItem = {
         ...item,
-        id: docRef.id,
+        id: newItemId,
         stayId: activeStay.id,
         userId: user.uid
       };
 
+      if (user.uid === 'guest-local-user') {
+        setUserAgendaItems((prev) => {
+          const next = [...prev, newItem];
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        return newItemId;
+      }
+
+      const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
+      const docRef = doc(colRef, newItemId);
       await setDoc(docRef, newItem);
-      return docRef.id;
+      return newItemId;
     },
     [user, activeStay, requireAuth]
   );
@@ -348,6 +512,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requireAuth(() => {}, 'Log masuk dengan Google untuk mengemas kini aktiviti.');
         return;
       }
+
+      if (user.uid === 'guest-local-user') {
+        setUserAgendaItems((prev) => {
+          const next = prev.map((a) => (a.id === id ? { ...a, ...updates } : a));
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        return;
+      }
+
       const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
       await updateDoc(itemRef, updates);
     },
@@ -360,6 +534,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requireAuth(() => {}, 'Log masuk dengan Google untuk memadam aktiviti.');
         return;
       }
+
+      if (user.uid === 'guest-local-user') {
+        setUserAgendaItems((prev) => {
+          const next = prev.filter((a) => a.id !== id);
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        return;
+      }
+
       const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
       await deleteDoc(itemRef);
     },
@@ -372,8 +556,18 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requireAuth(() => {}, 'Log masuk dengan Google untuk menanda aktiviti siap.');
         return;
       }
+
       const existing = userAgendaItems.find((i) => i.id === id);
       if (!existing) return;
+
+      if (user.uid === 'guest-local-user') {
+        setUserAgendaItems((prev) => {
+          const next = prev.map((a) => (a.id === id ? { ...a, isCompleted: !a.isCompleted } : a));
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        return;
+      }
 
       const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
       await updateDoc(itemRef, { isCompleted: !existing.isCompleted });
@@ -388,17 +582,27 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
-      const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
-      const docRef = doc(colRef);
+      const newItemId = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newItem: ChecklistItem = {
         ...item,
-        id: docRef.id,
+        id: newItemId,
         stayId: activeStay.id,
         userId: user.uid
       };
 
+      if (user.uid === 'guest-local-user') {
+        setUserChecklistItems((prev) => {
+          const next = [...prev, newItem];
+          saveLocalData(LOCAL_CHECKLIST_KEY, next);
+          return next;
+        });
+        return newItemId;
+      }
+
+      const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
+      const docRef = doc(colRef, newItemId);
       await setDoc(docRef, newItem);
-      return docRef.id;
+      return newItemId;
     },
     [user, activeStay, requireAuth]
   );
@@ -412,6 +616,15 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const existing = userChecklistItems.find((i) => i.id === id);
       if (!existing) return;
 
+      if (user.uid === 'guest-local-user') {
+        setUserChecklistItems((prev) => {
+          const next = prev.map((c) => (c.id === id ? { ...c, isCompleted: !c.isCompleted } : c));
+          saveLocalData(LOCAL_CHECKLIST_KEY, next);
+          return next;
+        });
+        return;
+      }
+
       const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
       await updateDoc(itemRef, { isCompleted: !existing.isCompleted });
     },
@@ -424,6 +637,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requireAuth(() => {}, 'Log masuk dengan Google untuk memadam item.');
         return;
       }
+
+      if (user.uid === 'guest-local-user') {
+        setUserChecklistItems((prev) => {
+          const next = prev.filter((c) => c.id !== id);
+          saveLocalData(LOCAL_CHECKLIST_KEY, next);
+          return next;
+        });
+        return;
+      }
+
       const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
       await deleteDoc(itemRef);
     },

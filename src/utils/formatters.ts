@@ -1,4 +1,4 @@
-import { Stay, AgendaItem, ChecklistItem, DayType } from '../types';
+import { Stay, AgendaItem, ChecklistItem, DayType, TimeSlot } from '../types';
 import { TIME_SLOTS, PRIORITY_CONFIG, DAY_TYPE_CONFIG } from './constants';
 
 /**
@@ -158,7 +158,7 @@ export function generateWhatsAppMessage(stay: Stay, agendaItems: AgendaItem[], c
       continue;
     }
 
-    const slotOrder: ('morning' | 'afternoon' | 'evening' | 'flexible')[] = ['morning', 'afternoon', 'evening', 'flexible'];
+    const slotOrder: TimeSlot[] = ['morning', 'midday', 'afternoon', 'evening', 'flexible'];
 
     for (const slot of slotOrder) {
       const slotItems = dayItems.filter((i) => i.timeSlot === slot);

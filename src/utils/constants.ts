@@ -120,9 +120,14 @@ export const TIME_SLOTS: Record<TimeSlot, { label: string; icon: string; bgBadge
     icon: '🌅',
     bgBadge: 'bg-amber-100/80 text-amber-900 border-amber-200'
   },
+  midday: {
+    label: 'Tengahari',
+    icon: '☀️',
+    bgBadge: 'bg-yellow-100/80 text-yellow-950 border-yellow-200'
+  },
   afternoon: {
     label: 'Petang',
-    icon: '☀️',
+    icon: '🌤️',
     bgBadge: 'bg-orange-100/80 text-orange-900 border-orange-200'
   },
   evening: {

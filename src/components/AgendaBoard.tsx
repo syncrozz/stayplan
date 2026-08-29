@@ -56,11 +56,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
   const activeDayContext = selectedDay > 0 ? getDayContextLabel(stay, selectedDay) : null;
 
-  // Core 3 time-of-day blocks (with fallback for flexible if existing data exists)
+  // Core 4 time-of-day blocks (with fallback for flexible if existing data exists)
   const hasFlexibleItems = filteredAgendas.some((i) => i.timeSlot === 'flexible');
   const slotKeys: TimeSlot[] = hasFlexibleItems
-    ? ['morning', 'afternoon', 'evening', 'flexible']
-    : ['morning', 'afternoon', 'evening'];
+    ? ['morning', 'midday', 'afternoon', 'evening', 'flexible']
+    : ['morning', 'midday', 'afternoon', 'evening'];
 
   return (
     <div id="agenda-board" className="space-y-6">
