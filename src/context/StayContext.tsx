@@ -77,7 +77,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>([]);
   const [activeStayId, setActiveStayIdState] = useState<string | null>(null);
   const [isLoadingStays, setIsLoadingStays] = useState<boolean>(true);
-  const [hasSeededInitial, setHasSeededInitial] = useState<boolean>(false);
 
   const isPersonalMode = !!user;
 
@@ -181,57 +180,11 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribe = onSnapshot(
       staysQuery,
-      async (snapshot) => {
+      (snapshot) => {
         const fetchedStays: Stay[] = [];
         snapshot.forEach((docSnap) => {
           fetchedStays.push(docSnap.data() as Stay);
         });
-
-        // If the authenticated user has zero stays in Firestore, auto-initialize their first personal stay
-        if (fetchedStays.length === 0 && !hasSeededInitial) {
-          setHasSeededInitial(true);
-          const initialStayId = `stay_${Date.now()}`;
-          const starterStay: Stay = {
-            ...SHOWCASE_STAYS[0],
-            id: initialStayId,
-            userId: user.uid,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-
-          try {
-            const batch = writeBatch(db);
-            const stayDocRef = doc(db, 'users', user.uid, 'stays', initialStayId);
-            batch.set(stayDocRef, starterStay);
-
-            SHOWCASE_AGENDA_ITEMS.forEach((item, index) => {
-              const aId = `agn_${Date.now()}_${index}`;
-              const aRef = doc(db, 'users', user.uid, 'stays', initialStayId, 'agendaItems', aId);
-              batch.set(aRef, {
-                ...item,
-                id: aId,
-                stayId: initialStayId,
-                userId: user.uid
-              });
-            });
-
-            SHOWCASE_CHECKLIST_ITEMS.forEach((chk, index) => {
-              const cId = `chk_${Date.now()}_${index}`;
-              const cRef = doc(db, 'users', user.uid, 'stays', initialStayId, 'checklistItems', cId);
-              batch.set(cRef, {
-                ...chk,
-                id: cId,
-                stayId: initialStayId,
-                userId: user.uid
-              });
-            });
-
-            await batch.commit();
-            // onSnapshot will automatically trigger with the newly created stay
-          } catch (seedErr) {
-            console.error('Failed to initialize initial stay:', seedErr);
-          }
-        }
 
         setUserStays(fetchedStays);
 
@@ -252,7 +205,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => unsubscribe();
-  }, [user, hasSeededInitial]);
+  }, [user]);
 
   // 2. Subscribe to Agenda & Checklist of the currently active stay (for Firebase User)
   useEffect(() => {
