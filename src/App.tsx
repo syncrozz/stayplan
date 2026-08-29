@@ -14,7 +14,7 @@ import { ActivityModal } from './components/ActivityModal';
 import { ShareExportModal } from './components/ShareExportModal';
 import { AuthModal } from './components/AuthModal';
 import { STAY_TYPES } from './utils/constants';
-import { formatDateRange } from './utils/formatters';
+import { formatDateRange, formatStaySummary } from './utils/formatters';
 import { Stay, AgendaItem, TimeSlot } from './types';
 import {
   Calendar,
@@ -328,8 +328,8 @@ function StayPlanApp() {
                   <span>{typeMeta?.icon}</span>
                   <span>{typeMeta?.label}</span>
                 </span>
-                <span className="px-3 py-1 rounded-full bg-stone-100 text-stone-700 text-xs font-semibold">
-                  {activeStay.durationDays} Hari {activeStay.durationDays > 1 ? `${activeStay.durationDays - 1} Malam` : ''}
+                <span className="px-3 py-1 rounded-full bg-stone-100 text-stone-800 text-xs font-bold border border-stone-200/80">
+                  {formatStaySummary(activeStay)}
                 </span>
                 {isPersonalMode ? (
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">

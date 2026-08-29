@@ -144,3 +144,27 @@ export const CHECKLIST_CATEGORIES: Record<ChecklistCategory, { label: string; ic
   kids_elderly: { label: 'Anak Kecil & Warga Emas', icon: '👶' },
   custom: { label: 'Lain-lain', icon: '📝' }
 };
+
+export const DAY_TYPE_CONFIG = {
+  travel_day: {
+    label: 'Hari Perjalanan',
+    shortLabel: 'Perjalanan',
+    icon: '🚗',
+    badgeClass: 'bg-orange-100 text-orange-900 border-orange-200/80',
+    cardBorder: 'border-orange-200 hover:border-orange-300',
+    headerBg: 'bg-orange-50/70',
+    tagBg: 'bg-orange-100/90 text-orange-950 border-orange-300/80 font-bold',
+    description: 'Hari bertolak atau perjalanan pulang (fokus logistik santai & rehat jalanan)'
+  },
+  stay_day: {
+    label: 'Hari Penginapan (Aktiviti)',
+    shortLabel: 'Stay Day',
+    icon: '🏠',
+    badgeClass: 'bg-amber-100 text-amber-900 border-amber-200/80',
+    cardBorder: 'border-stone-200 hover:border-amber-300',
+    headerBg: 'bg-stone-50/90',
+    tagBg: 'bg-amber-100/90 text-amber-950 border-amber-300/80 font-bold',
+    description: 'Hari penginapan penuh untuk aktiviti, silaturahim, makan santai & santai'
+  }
+};
+

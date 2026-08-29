@@ -50,6 +50,14 @@ export interface ChecklistItem {
   isCompleted: boolean;
 }
 
+export type DayType = 'travel_day' | 'stay_day';
+
+export interface DayConfig {
+  dayNumber: number;
+  type: DayType;
+  customLabel?: string;
+}
+
 export interface Stay {
   id: string;
   userId?: string;
@@ -70,6 +78,7 @@ export interface Stay {
   houseRules?: string[];
   importantNotes?: string;
   companions: string[];
+  dayTypes?: Record<number, DayType>; // e.g. { 1: 'travel_day', 2: 'stay_day', 3: 'travel_day' }
   themeColor?: string;
   createdAt: number;
   updatedAt: number;

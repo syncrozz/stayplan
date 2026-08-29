@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AgendaItem, TimeSlot, ActivityPriority, Stay } from '../types';
 import { TIME_SLOTS, PRIORITY_CONFIG } from '../utils/constants';
+import { getDayContextLabel } from '../utils/formatters';
 import {
   Plus,
   Check,
@@ -53,6 +54,8 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     return item.priority === priorityFilter;
   });
 
+  const activeDayContext = selectedDay > 0 ? getDayContextLabel(stay, selectedDay) : null;
+
   // Core 3 time-of-day blocks (with fallback for flexible if existing data exists)
   const hasFlexibleItems = filteredAgendas.some((i) => i.timeSlot === 'flexible');
   const slotKeys: TimeSlot[] = hasFlexibleItems
@@ -62,72 +65,106 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   return (
     <div id="agenda-board" className="space-y-6">
       {/* Day Selector Pills & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200 shadow-2xs">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          <span className="text-xs font-bold text-stone-500 uppercase tracking-wider mr-1 shrink-0">
-            Hari:
-          </span>
-          {Array.from({ length: daysCount }).map((_, idx) => {
-            const dayNum = idx + 1;
-            const isSelected = selectedDay === dayNum;
-            const dayItems = agendaItems.filter((i) => i.dayNumber === dayNum);
-            const mustCount = dayItems.filter((i) => i.priority === 'must_do').length;
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider mr-1 shrink-0">
+              Hari:
+            </span>
+            {Array.from({ length: daysCount }).map((_, idx) => {
+              const dayNum = idx + 1;
+              const isSelected = selectedDay === dayNum;
+              const dayContext = getDayContextLabel(stay, dayNum);
+              const isTravel = dayContext.type === 'travel_day';
+              const dayItems = agendaItems.filter((i) => i.dayNumber === dayNum);
+              const mustCount = dayItems.filter((i) => i.priority === 'must_do').length;
 
-            return (
-              <button
-                key={dayNum}
-                type="button"
-                onClick={() => setSelectedDay(dayNum)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
-                }`}
-              >
-                <span>Hari {dayNum}</span>
-                {mustCount > 0 && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                      isSelected ? 'bg-amber-800 text-amber-100' : 'bg-stone-200 text-stone-600'
-                    }`}
-                  >
-                    ⭐ {mustCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={dayNum}
+                  type="button"
+                  id={`day-tab-${dayNum}`}
+                  onClick={() => setSelectedDay(dayNum)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 border ${
+                    isSelected
+                      ? isTravel
+                        ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                        : 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : isTravel
+                      ? 'bg-orange-50/80 hover:bg-orange-100 text-orange-950 border-orange-200'
+                      : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                  }`}
+                >
+                  <span>{dayContext.label}</span>
+                  {mustCount > 0 && (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        isSelected
+                          ? 'bg-black/20 text-white'
+                          : isTravel
+                          ? 'bg-orange-200 text-orange-900'
+                          : 'bg-amber-200 text-amber-900'
+                      }`}
+                    >
+                      ⭐ {mustCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
 
-          <button
-            type="button"
-            onClick={() => setSelectedDay(0)}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
-              selectedDay === 0
-                ? 'bg-stone-900 text-white shadow-xs'
-                : 'bg-stone-100 hover:bg-stone-200 text-stone-600'
+            <button
+              type="button"
+              onClick={() => setSelectedDay(0)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+                selectedDay === 0
+                  ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                  : 'bg-stone-50 hover:bg-stone-100 text-stone-600 border-stone-200'
+              }`}
+            >
+              Semua Hari ({agendaItems.length})
+            </button>
+          </div>
+
+          {/* Priority Filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-lg text-stone-700 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="all">Semua Jenis</option>
+              <option value="must_do">⭐ Wajib Sahaja</option>
+              <option value="optional">🌴 Pilihan Sahaja</option>
+              <option value="food">🍽️ Makan</option>
+              <option value="rest">☕ Rehat</option>
+              <option value="logistics">🚗 Logistik</option>
+              <option value="incomplete">Belum Selesai</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Selected Day Context Banner */}
+        {activeDayContext && (
+          <div
+            className={`p-2.5 sm:p-3 rounded-xl border flex items-center gap-2 text-xs ${
+              activeDayContext.type === 'travel_day'
+                ? 'bg-orange-50/80 border-orange-200 text-orange-950'
+                : 'bg-amber-50/80 border-amber-200 text-amber-950'
             }`}
           >
-            Semua Hari ({agendaItems.length})
-          </button>
-        </div>
-
-        {/* Priority Filter */}
-        <div className="flex items-center gap-1.5 overflow-x-auto">
-          <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-lg text-stone-700 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="all">Semua Jenis</option>
-            <option value="must_do">⭐ Wajib Sahaja</option>
-            <option value="optional">🌴 Pilihan Sahaja</option>
-            <option value="food">🍽️ Makan</option>
-            <option value="rest">☕ Rehat</option>
-            <option value="logistics">🚗 Logistik</option>
-            <option value="incomplete">Belum Selesai</option>
-          </select>
-        </div>
+            <span className="text-base">{activeDayContext.type === 'travel_day' ? '🚗' : '🏠'}</span>
+            <div>
+              <span className="font-extrabold">{activeDayContext.label}:</span>{' '}
+              <span className="text-stone-600">
+                {activeDayContext.type === 'travel_day'
+                  ? 'Hari perjalanan (bertolak / pulang). Fokuskan perancangan kepada waktu bertolak, persinggahan R&R, dan logistik kenderaan.'
+                  : 'Hari penginapan penuh. Masa terbaik untuk agenda lawatan, makan-makan tempatan, dan santai bersama.'}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Pacing Advice Card */}

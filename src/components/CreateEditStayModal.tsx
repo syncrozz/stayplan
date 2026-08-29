@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, MapPin, Wifi, Phone, KeyRound, Users, Plus, Trash2, Sparkles, Check, FileText } from 'lucide-react';
-import { Stay, StayType } from '../types';
-import { STAY_TYPES } from '../utils/constants';
+import { X, Calendar, MapPin, Wifi, Phone, KeyRound, Users, Plus, Trash2, Sparkles, Check, FileText, Car, Home } from 'lucide-react';
+import { Stay, StayType, DayType } from '../types';
+import { STAY_TYPES, DAY_TYPE_CONFIG } from '../utils/constants';
+import { getDayType, getStaySummaryCounts, getDayContextLabel } from '../utils/formatters';
 
 interface CreateEditStayModalProps {
   isOpen: boolean;
@@ -35,13 +36,15 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
   const [companions, setCompanions] = useState<string[]>([]);
   const [ruleInput, setRuleInput] = useState('');
   const [houseRules, setHouseRules] = useState<string[]>([]);
+  const [dayTypes, setDayTypes] = useState<Record<number, DayType>>({});
   const [activeTab, setActiveTab] = useState<'basic' | 'stay_info' | 'companions'>('basic');
 
   useEffect(() => {
     if (initialStay) {
       setTitle(initialStay.title);
       setType(initialStay.type);
-      setDurationDays(initialStay.durationDays || 3);
+      const totalD = initialStay.durationDays || 3;
+      setDurationDays(totalD);
       setStartDate(initialStay.startDate || '');
       setEndDate(initialStay.endDate || '');
       setLocation(initialStay.location || '');
@@ -54,6 +57,17 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
       setImportantNotes(initialStay.importantNotes || '');
       setCompanions(initialStay.companions || []);
       setHouseRules(initialStay.houseRules || []);
+
+      // Build day types from initialStay or default
+      const initialDayTypes: Record<number, DayType> = {};
+      for (let d = 1; d <= totalD; d++) {
+        if (initialStay.dayTypes && initialStay.dayTypes[d]) {
+          initialDayTypes[d] = initialStay.dayTypes[d];
+        } else {
+          initialDayTypes[d] = (d === 1 || (d === totalD && totalD >= 2)) ? 'travel_day' : 'stay_day';
+        }
+      }
+      setDayTypes(initialDayTypes);
     } else {
       // Default new stay
       setTitle('Balik Kampung Hujung Minggu');
@@ -73,6 +87,12 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
       setImportantNotes('');
       setCompanions(['Keluarga']);
       setHouseRules([]);
+      // Default day types: Day 1 & Day 3 Travel, Day 2 Stay
+      setDayTypes({
+        1: 'travel_day',
+        2: 'stay_day',
+        3: 'travel_day'
+      });
     }
   }, [initialStay, isOpen]);
 
@@ -88,6 +108,12 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
           .split('T')[0];
         setEndDate(end);
       }
+      // Recompute default day types
+      const newDTypes: Record<number, DayType> = {};
+      for (let d = 1; d <= defaultD; d++) {
+        newDTypes[d] = (d === 1 || (d === defaultD && defaultD >= 2)) ? 'travel_day' : 'stay_day';
+      }
+      setDayTypes(newDTypes);
     }
   };
 
@@ -109,6 +135,28 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
         .split('T')[0];
       setEndDate(end);
     }
+    // Update dayTypes for new duration
+    setDayTypes((prev) => {
+      const updated: Record<number, DayType> = {};
+      for (let d = 1; d <= days; d++) {
+        if (prev[d]) {
+          updated[d] = prev[d];
+        } else {
+          updated[d] = (d === 1 || (d === days && days >= 2)) ? 'travel_day' : 'stay_day';
+        }
+      }
+      return updated;
+    });
+  };
+
+  const toggleDayType = (dayNumber: number) => {
+    setDayTypes((prev) => {
+      const current = prev[dayNumber] || ((dayNumber === 1 || (dayNumber === durationDays && durationDays >= 2)) ? 'travel_day' : 'stay_day');
+      return {
+        ...prev,
+        [dayNumber]: current === 'travel_day' ? 'stay_day' : 'travel_day'
+      };
+    });
   };
 
   const handleAddCompanion = () => {
@@ -152,11 +200,15 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
       gatePin: gatePin.trim(),
       importantNotes: importantNotes.trim(),
       companions,
-      houseRules
+      houseRules,
+      dayTypes
     });
 
     onClose();
   };
+
+  // Compute summary for live preview
+  const currentSummary = getStaySummaryCounts({ durationDays, dayTypes });
 
   if (!isOpen) return null;
 
@@ -345,6 +397,69 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                     className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
+              </div>
+
+              {/* Day Types & Summary Configuration */}
+              <div className="p-4 rounded-2xl bg-amber-50/40 border border-amber-200/80 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div>
+                    <label className="block text-xs font-extrabold text-amber-950 uppercase tracking-wider">
+                      Konfigurasi Jenis Hari (Travel Day vs Stay Day)
+                    </label>
+                    <p className="text-[11px] text-stone-500">
+                      Hari bertolak dan pulang tidak disamakan dengan hari aktiviti/penginapan penuh.
+                    </p>
+                  </div>
+                  <span className="self-start sm:self-auto text-xs font-bold text-amber-900 bg-amber-100/90 border border-amber-300/80 px-2.5 py-1 rounded-lg">
+                    {currentSummary.totalDays} Hari · {currentSummary.nights} Malam · {currentSummary.stayDaysCount} Hari Aktiviti
+                  </span>
+                </div>
+
+                {/* Day Type Toggle List */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
+                  {Array.from({ length: durationDays }).map((_, idx) => {
+                    const dayNum = idx + 1;
+                    const isTravel = (dayTypes[dayNum] || (dayNum === 1 || (dayNum === durationDays && durationDays >= 2) ? 'travel_day' : 'stay_day')) === 'travel_day';
+                    
+                    // Compute readable label
+                    let label = isTravel ? 'Perjalanan' : 'Stay Day';
+                    if (isTravel && dayNum === durationDays && durationDays >= 2) {
+                      label = 'Perjalanan Balik';
+                    }
+
+                    return (
+                      <button
+                        key={dayNum}
+                        type="button"
+                        onClick={() => toggleDayType(dayNum)}
+                        className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all ${
+                          isTravel
+                            ? 'bg-orange-50/90 border-orange-300 text-orange-950 hover:bg-orange-100/80'
+                            : 'bg-amber-50/70 border-amber-300 text-amber-950 hover:bg-amber-100/70'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{isTravel ? '🚗' : '🏠'}</span>
+                          <div>
+                            <span className="text-xs font-bold block leading-tight">Hari {dayNum}</span>
+                            <span className="text-[10px] font-semibold text-stone-500">{label}</span>
+                          </div>
+                        </div>
+
+                        <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold border ${
+                          isTravel
+                            ? 'bg-orange-200/80 text-orange-900 border-orange-300'
+                            : 'bg-amber-200/80 text-amber-900 border-amber-300'
+                        }`}>
+                          {isTravel ? 'Travel' : 'Stay'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-stone-500 italic">
+                  💡 Tip: Klik pada mana-mana hari di atas untuk menukar antara 🚗 Hari Perjalanan dan 🏠 Hari Stay mengikut kesesuaian anda.
+                </p>
               </div>
             </div>
           )}
