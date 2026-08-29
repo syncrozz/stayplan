@@ -41,18 +41,18 @@ const STEPS = [
   },
   {
     step: 3,
-    title: 'Papan Agenda (Daily Agenda)',
-    tagline: 'Fokus satu hari pada satu masa',
-    icon: '📋',
-    desc: 'Lihat agenda tersusun mengikut waktu (Pagi, Tengahari, Petang, Malam) dengan PIC dan lokasi.',
+    title: 'Kalendar Stay (Calendar View)',
+    tagline: 'Gambaran penuh & slot harian 2–4 hari',
+    icon: '📅',
+    desc: 'Lihat aliran masa harian (Pagi, Tengahari, Petang, Malam), semak butiran lokasi & PIC, serta kongsi jadual ke WhatsApp.',
     tip: 'Tandakan aktiviti yang telah selesai dan pantau pacing rehat anda.'
   },
   {
     step: 4,
-    title: 'Kalendar Ringkas (Calendar View)',
-    tagline: 'Gambaran penuh short stay 2–4 hari',
-    icon: '📅',
-    desc: 'Lihat keseluruhan flow percutian dalam satu pandangan jelas, mudah dikongsi ke WhatsApp bersama keluarga.',
+    title: 'Senarai Semak & Info Homestay',
+    tagline: 'Persediaan packing & logistik',
+    icon: '📋',
+    desc: 'Semak senarai kelengkapan barang sebelum bertolak dan simpan info homestay seperti WiFi & laluan.',
     tip: 'Eksport atau kongsi jadual ringkas terus kepada ahli keluarga atau hos homestay.'
   }
 ];

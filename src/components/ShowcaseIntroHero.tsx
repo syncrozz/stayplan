@@ -120,15 +120,15 @@ export const ShowcaseIntroHero: React.FC<ShowcaseIntroHeroProps> = ({
               <div className="flex items-center gap-1">
                 <span className="text-[10px] font-bold text-amber-700">1. Kumpul</span>
                 <span className="text-[10px] text-stone-400">•</span>
-                <h4 className="text-xs font-bold text-stone-900">Kumpul Idea</h4>
+                <h4 className="text-xs font-bold text-stone-900">Perancangan</h4>
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
-                Senaraikan semua aktiviti & keinginan tanpa risau susunan masa dahulu.
+                Kumpul semua aktiviti & keinginan tanpa risau susunan masa dahulu.
               </p>
             </div>
           </div>
 
-          {/* Step 2: Organise */}
+          {/* Step 2: Susun */}
           <div className="p-3 rounded-2xl bg-stone-50/90 border border-stone-200/80 flex items-start gap-2.5">
             <span className="text-xl p-1.5 rounded-xl bg-white border border-stone-200 shadow-2xs shrink-0">
               🗂️
@@ -137,44 +137,44 @@ export const ShowcaseIntroHero: React.FC<ShowcaseIntroHeroProps> = ({
               <div className="flex items-center gap-1">
                 <span className="text-[10px] font-bold text-amber-700">2. Susun</span>
                 <span className="text-[10px] text-stone-400">•</span>
-                <h4 className="text-xs font-bold text-stone-900">Organise</h4>
+                <h4 className="text-xs font-bold text-stone-900">Agih & Keutamaan</h4>
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
-                Agihkan mengikut Hari Perjalanan vs Stay Day & slot masa seimbang.
+                Tapis aktiviti Wajib vs Pilihan & agihkan ke hari perjalanan atau stay.
               </p>
             </div>
           </div>
 
-          {/* Step 3: Agenda */}
-          <div className="p-3 rounded-2xl bg-stone-50/90 border border-stone-200/80 flex items-start gap-2.5">
-            <span className="text-xl p-1.5 rounded-xl bg-white border border-stone-200 shadow-2xs shrink-0">
-              📋
-            </span>
-            <div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-bold text-amber-700">3. Fokus</span>
-                <span className="text-[10px] text-stone-400">•</span>
-                <h4 className="text-xs font-bold text-stone-900">Agenda</h4>
-              </div>
-              <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
-                Semak jadual harian mengikut slot Pagi, Tengahari, Petang & Malam.
-              </p>
-            </div>
-          </div>
-
-          {/* Step 4: Calendar */}
+          {/* Step 3: Calendar */}
           <div className="p-3 rounded-2xl bg-stone-50/90 border border-stone-200/80 flex items-start gap-2.5">
             <span className="text-xl p-1.5 rounded-xl bg-white border border-stone-200 shadow-2xs shrink-0">
               📅
             </span>
             <div>
               <div className="flex items-center gap-1">
-                <span className="text-[10px] font-bold text-amber-700">4. Pantau</span>
+                <span className="text-[10px] font-bold text-amber-700">3. Pantau</span>
                 <span className="text-[10px] text-stone-400">•</span>
-                <h4 className="text-xs font-bold text-stone-900">Calendar</h4>
+                <h4 className="text-xs font-bold text-stone-900">Kalendar</h4>
               </div>
               <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
-                Gambaran lengkap keseluruhan stay & perkongsian mudah ke WhatsApp.
+                Gambaran lengkap slot harian (Pagi, Petang, Malam) & kongsi terus ke WhatsApp.
+              </p>
+            </div>
+          </div>
+
+          {/* Step 4: Checklist & Info */}
+          <div className="p-3 rounded-2xl bg-stone-50/90 border border-stone-200/80 flex items-start gap-2.5">
+            <span className="text-xl p-1.5 rounded-xl bg-white border border-stone-200 shadow-2xs shrink-0">
+              📋
+            </span>
+            <div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-bold text-amber-700">4. Siap</span>
+                <span className="text-[10px] text-stone-400">•</span>
+                <h4 className="text-xs font-bold text-stone-900">Semak & Info</h4>
+              </div>
+              <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
+                Senarai barang packing & simpan maklumat homestay dalam satu tempat.
               </p>
             </div>
           </div>

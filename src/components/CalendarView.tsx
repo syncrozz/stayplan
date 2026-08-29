@@ -21,17 +21,16 @@ import {
 interface CalendarViewProps {
   stay: Stay;
   agendaItems: AgendaItem[];
-  onSelectDayInAgenda: (dayNumber: number) => void;
   onAddItem: (dayNumber: number, slot: TimeSlot) => void;
   onEditItem: (item: AgendaItem) => void;
   onToggleComplete: (id: string) => void;
   onNavigateToPlan?: () => void;
+  onSelectDayInAgenda?: (dayNumber: number) => void;
 }
 
 export function CalendarView({
   stay,
   agendaItems,
-  onSelectDayInAgenda,
   onAddItem,
   onEditItem,
   onToggleComplete,
@@ -352,38 +351,30 @@ export function CalendarView({
                   </div>
                 )}
 
-                {/* Progressive Disclosure Footer: "+ More" or "Lihat Butiran" */}
+                {/* Progressive Disclosure Footer: "Lihat Butiran" and "+ Tambah" */}
                 <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-2">
-                  {remainingCount > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDayDetail(dayNum)}
-                      className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg transition-colors ${
-                        isTravel
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDayDetail(dayNum)}
+                    className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      remainingCount > 0
+                        ? isTravel
                           ? 'text-orange-800 bg-orange-50 hover:bg-orange-100'
                           : 'text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100'
-                      }`}
-                    >
-                      <span>+ {remainingCount} lagi</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDayDetail(dayNum)}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-500 hover:text-stone-800 hover:bg-stone-100 px-2 py-1 rounded-lg transition-colors"
-                    >
-                      <span>Lihat Butiran</span>
-                    </button>
-                  )}
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span>{remainingCount > 0 ? `+ ${remainingCount} lagi (Butiran)` : 'Lihat Butiran'}</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
 
                   <button
                     type="button"
-                    onClick={() => onSelectDayInAgenda(dayNum)}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-stone-600 hover:text-amber-800 hover:bg-amber-50/60 px-2 py-1 rounded-lg transition-colors"
+                    onClick={() => onAddItem(dayNum, isTravel ? 'morning' : 'morning')}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
                   >
-                    <span>Buka Agenda</span>
-                    <ChevronRight className="w-3 h-3" />
+                    <Plus className="w-3 h-3" />
+                    <span>Tambah</span>
                   </button>
                 </div>
 
@@ -545,27 +536,36 @@ export function CalendarView({
 
             {/* Modal Footer */}
             <div className="px-6 py-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  const day = selectedDayDetail;
-                  setSelectedDayDetail(null);
-                  onSelectDayInAgenda(day);
-                }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-4 py-2.5 rounded-xl hover:bg-stone-100 transition-colors"
-              >
-                <List className="w-4 h-4" />
-                <span>Buka Paparan Penuh Agenda</span>
-              </button>
+              {onNavigateToPlan ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDayDetail(null);
+                    onNavigateToPlan();
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-900 bg-white border border-stone-300 px-4 py-2.5 rounded-xl hover:bg-stone-100 transition-colors cursor-pointer"
+                >
+                  <List className="w-4 h-4 text-amber-700" />
+                  <span>📝 Susun di Perancangan</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDayDetail(null)}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 bg-white border border-stone-300 px-4 py-2.5 rounded-xl hover:bg-stone-100 transition-colors cursor-pointer"
+                >
+                  <span>Tutup</span>
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={() => {
-                  const day = selectedDayDetail;
+                  const day = selectedDayDetail || 1;
                   setSelectedDayDetail(null);
                   onAddItem(day, 'morning');
                 }}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 px-4 py-2.5 rounded-xl transition-colors shadow-2xs"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 px-4 py-2.5 rounded-xl transition-colors shadow-2xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>+ Tambah Agenda</span>
