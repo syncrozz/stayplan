@@ -207,3 +207,16 @@ export function generateWhatsAppMessage(stay: Stay, agendaItems: AgendaItem[], c
 
   return msg;
 }
+
+/**
+ * Automatically converts text to Title Case.
+ * Capitalizes the first letter of every word (including after spaces, hyphens, slashes, or parentheses).
+ * Preserves trailing and intermediate whitespace during typing.
+ */
+export function toTitleCase(str: string): string {
+  if (!str) return '';
+
+  return str.replace(/[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]+/g, (word) => {
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}

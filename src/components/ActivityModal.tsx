@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Clock, MapPin, User, Tag, Sparkles, Check } from 'lucide-react';
 import { AgendaItem, TimeSlot, ActivityPriority, Stay } from '../types';
 import { TIME_SLOTS, PRIORITY_CONFIG } from '../utils/constants';
+import { toTitleCase } from '../utils/formatters';
 
 interface ActivityModalProps {
   isOpen: boolean;
@@ -67,11 +68,11 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
       dayNumber,
       timeSlot,
       timeSpecific: timeSpecific.trim(),
-      title: title.trim(),
+      title: toTitleCase(title.trim()),
       description: description.trim(),
       priority,
-      locationName: locationName.trim(),
-      personInCharge: personInCharge.trim(),
+      locationName: toTitleCase(locationName.trim()),
+      personInCharge: toTitleCase(personInCharge.trim()),
       isCompleted
     });
 
@@ -117,7 +118,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
               required
               autoFocus
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => setTitle(toTitleCase(e.target.value))}
               placeholder="Cth: Pergi Pantai / Makan Nasi Dagang / Sembang Kopi"
               className="w-full px-4 py-3 text-base bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold text-stone-900 placeholder:font-normal placeholder:text-stone-400 shadow-2xs"
             />
@@ -205,7 +206,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
                   <input
                     type="text"
                     value={locationName}
-                    onChange={(e) => setLocationName(e.target.value)}
+                    onChange={(e) => setLocationName(toTitleCase(e.target.value))}
                     placeholder="Cth: Pasar Payang / Pantai Teluk Ketapang"
                     className="w-full pl-10 pr-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
                   />
@@ -250,7 +251,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
                 <input
                   type="text"
                   value={personInCharge}
-                  onChange={(e) => setPersonInCharge(e.target.value)}
+                  onChange={(e) => setPersonInCharge(toTitleCase(e.target.value))}
                   placeholder="Cth: Abang Long / Mak / Ayah"
                   className="w-full pl-10 pr-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500"
                 />

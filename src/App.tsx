@@ -366,7 +366,7 @@ function StayPlanApp() {
                 title="Paksa segerakkan semua data ke Cloud Firestore sekarang"
               >
                 <RefreshCw className={`w-3 h-3 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Menyegerakkan...' : '⚡ Paksa Segerak (Force Sync)'}</span>
+                <span>{isSyncing ? 'Sync...' : '⚡ Paksa Segerak (Force Sync)'}</span>
               </button>
               <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
                 ● Terselaras Masa-Nyata

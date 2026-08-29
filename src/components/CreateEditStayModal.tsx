@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Wifi, Phone, KeyRound, Users, Plus, Trash2, Sparkles, Check, FileText, Car, Home } from 'lucide-react';
 import { Stay, StayType, DayType } from '../types';
 import { STAY_TYPES, DAY_TYPE_CONFIG } from '../utils/constants';
-import { getDayType, getStaySummaryCounts, getDayContextLabel } from '../utils/formatters';
+import { getDayType, getStaySummaryCounts, getDayContextLabel, toTitleCase } from '../utils/formatters';
 
 // Helper to calculate difference in calendar days (inclusive of start & end day)
 function getDaysDifference(startDateStr: string, endDateStr: string): number {
@@ -206,7 +206,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
 
   const handleAddCompanion = () => {
     if (companionInput.trim()) {
-      setCompanions([...companions, companionInput.trim()]);
+      setCompanions([...companions, toTitleCase(companionInput.trim())]);
       setCompanionInput('');
     }
   };
@@ -217,7 +217,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
 
   const handleAddRule = () => {
     if (ruleInput.trim()) {
-      setHouseRules([...houseRules, ruleInput.trim()]);
+      setHouseRules([...houseRules, toTitleCase(ruleInput.trim())]);
       setRuleInput('');
     }
   };
@@ -231,16 +231,16 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
     if (!title.trim()) return;
 
     onSave({
-      title: title.trim(),
+      title: toTitleCase(title.trim()),
       type,
       durationDays,
       startDate,
       endDate,
-      location: location.trim() || 'Lokasi Belum Ditetapkan',
+      location: toTitleCase(location.trim()) || 'Lokasi Belum Ditetapkan',
       address: address.trim(),
       wifiSsid: wifiSsid.trim(),
       wifiPassword: wifiPassword.trim(),
-      hostName: hostName.trim(),
+      hostName: toTitleCase(hostName.trim()),
       hostContact: hostContact.trim(),
       gatePin: gatePin.trim(),
       importantNotes: importantNotes.trim(),
@@ -367,7 +367,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                   type="text"
                   required
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => setTitle(toTitleCase(e.target.value))}
                   placeholder="Cth: Balik Kampung Muar (Rumah Tok) / Homestay Kundasang"
                   className="w-full px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all font-medium"
                 />
@@ -444,7 +444,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                   <input
                     type="text"
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={(e) => setLocation(toTitleCase(e.target.value))}
                     placeholder="Cth: Parit Bakar, Muar / Tanah Rata, Cameron Highlands"
                     className="w-full pl-10 pr-3.5 py-2.5 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
@@ -572,7 +572,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                   <input
                     type="text"
                     value={hostName}
-                    onChange={(e) => setHostName(e.target.value)}
+                    onChange={(e) => setHostName(toTitleCase(e.target.value))}
                     placeholder="Cth: Tok Wan / En. Firdaus"
                     className="w-full px-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white"
                   />
@@ -617,7 +617,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                   <input
                     type="text"
                     value={ruleInput}
-                    onChange={(e) => setRuleInput(e.target.value)}
+                    onChange={(e) => setRuleInput(toTitleCase(e.target.value))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -670,7 +670,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                   <input
                     type="text"
                     value={companionInput}
-                    onChange={(e) => setCompanionInput(e.target.value)}
+                    onChange={(e) => setCompanionInput(toTitleCase(e.target.value))}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();

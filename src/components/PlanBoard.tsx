@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Stay, AgendaItem, TimeSlot, ActivityPriority } from '../types';
 import { useStay } from '../context/StayContext';
 import { PRIORITY_CONFIG, TIME_SLOTS } from '../utils/constants';
-import { getDayContextLabel } from '../utils/formatters';
+import { getDayContextLabel, toTitleCase } from '../utils/formatters';
 import { OrganisePlanModal } from './OrganisePlanModal';
 import {
   Plus,
@@ -39,16 +39,16 @@ interface PlanBoardProps {
 type FilterType = 'all' | 'backlog' | 'wajib' | 'optional' | 'scheduled';
 
 const MALAYSIAN_STAY_IDEAS = [
-  { title: 'Makan nasi dagang', priority: 'must_do' as ActivityPriority, icon: '🍚' },
-  { title: 'Pergi pantai', priority: 'optional' as ActivityPriority, icon: '🏖️' },
-  { title: 'Gi kenduri Ayoh Lie', priority: 'must_do' as ActivityPriority, icon: '🎉' },
-  { title: 'Makan kedai Kak Nurul', priority: 'optional' as ActivityPriority, icon: '🍜' },
-  { title: 'Jumpa keluarga', priority: 'must_do' as ActivityPriority, icon: '👨‍👩‍👧' },
-  { title: 'Bawa anak jalan-jalan', priority: 'optional' as ActivityPriority, icon: '🧒' },
-  { title: 'Beli keropok lekor', priority: 'optional' as ActivityPriority, icon: '🍘' },
+  { title: 'Makan Nasi Dagang', priority: 'must_do' as ActivityPriority, icon: '🍚' },
+  { title: 'Pergi Pantai', priority: 'optional' as ActivityPriority, icon: '🏖️' },
+  { title: 'Gi Kenduri Ayoh Lie', priority: 'must_do' as ActivityPriority, icon: '🎉' },
+  { title: 'Makan Kedai Kak Nurul', priority: 'optional' as ActivityPriority, icon: '🍜' },
+  { title: 'Jumpa Keluarga', priority: 'must_do' as ActivityPriority, icon: '👨‍👩‍👧' },
+  { title: 'Bawa Anak Jalan-Jalan', priority: 'optional' as ActivityPriority, icon: '🧒' },
+  { title: 'Beli Keropok Lekor', priority: 'optional' as ActivityPriority, icon: '🍘' },
   { title: 'Ziarah Tok', priority: 'must_do' as ActivityPriority, icon: '👵' },
-  { title: 'Singgah rumah Ayah', priority: 'must_do' as ActivityPriority, icon: '🏡' },
-  { title: 'Rehat santai & kopi petang', priority: 'optional' as ActivityPriority, icon: '☕' }
+  { title: 'Singgah Rumah Ayah', priority: 'must_do' as ActivityPriority, icon: '🏡' },
+  { title: 'Rehat Santai & Kopi Petang', priority: 'optional' as ActivityPriority, icon: '☕' }
 ];
 
 export const PlanBoard: React.FC<PlanBoardProps> = ({
@@ -98,7 +98,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
     try {
       await addAgendaItem({
         stayId: stay.id,
-        title: clean,
+        title: toTitleCase(clean),
         dayNumber: 0, // 0 = Belum dijadualkan / Backlog Pool
         timeSlot: 'flexible',
         priority: quickPriority,
@@ -273,8 +273,8 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
               id="quick-brain-dump-input"
               type="text"
               value={quickTitle}
-              onChange={(e) => setQuickTitle(e.target.value)}
-              placeholder="cth: Makan nasi dagang, Pergi pantai, Gi kenduri Ayoh Lie, Ziarah Tok..."
+              onChange={(e) => setQuickTitle(toTitleCase(e.target.value))}
+              placeholder="Cth: Makan Nasi Dagang, Pergi Pantai, Gi Kenduri Ayoh Lie, Ziarah Tok..."
               className="w-full pl-4 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl text-stone-900 placeholder:text-stone-400 text-sm font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
             />
           </div>
@@ -330,7 +330,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
         {/* Quick Malaysian Short Stay Suggestions Chips */}
         <div className="pt-2">
           <span className="text-[11px] font-bold text-stone-400 block mb-2">
-            💡 Cadangan Pantas (Klik untuk tambah serta-merta):
+            💡 Cadangan Pantas (Klik Untuk Tambah Serta-Merta):
           </span>
           <div className="flex flex-wrap gap-1.5">
             {MALAYSIAN_STAY_IDEAS.map((idea, idx) => {

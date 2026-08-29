@@ -283,7 +283,7 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Menyegerakkan...' : '⚡ Paksa Segerak Cloud (Sync)'}</span>
+              <span>{isSyncing ? 'Sync...' : '⚡ Paksa Segerak Cloud (Sync)'}</span>
             </button>
           </div>
 

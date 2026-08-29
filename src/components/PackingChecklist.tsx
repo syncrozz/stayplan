@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChecklistItem, ChecklistCategory, Stay } from '../types';
 import { CHECKLIST_CATEGORIES } from '../utils/constants';
 import { Check, Plus, Trash2, CheckCircle2, ListChecks, Sparkles } from 'lucide-react';
+import { toTitleCase } from '../utils/formatters';
 import confetti from 'canvas-confetti';
 
 interface PackingChecklistProps {
@@ -34,7 +35,7 @@ export const PackingChecklist: React.FC<PackingChecklistProps> = ({
     onAddItem({
       stayId: stay.id,
       category: selectedCategory,
-      text: inputText.trim(),
+      text: toTitleCase(inputText.trim()),
       isCompleted: false
     });
     setInputText('');
@@ -56,11 +57,11 @@ export const PackingChecklist: React.FC<PackingChecklistProps> = ({
 
   const addPresetSuggestions = () => {
     const suggestions: { category: ChecklistCategory; text: string }[] = [
-      { category: 'essentials', text: 'Ubat rutin / kit kecemasan keluarga' },
-      { category: 'essentials', text: 'Pengecas telefon & power bank' },
-      { category: 'house_homestay', text: 'Extension plug / soket tambahan' },
-      { category: 'food_gifts', text: 'Buah tangan khas / kuih tradisi' },
-      { category: 'kids_elderly', text: 'Minyak telon / ubatan anak kecil' }
+      { category: 'essentials', text: 'Ubat Rutin / Kit Kecemasan Keluarga' },
+      { category: 'essentials', text: 'Pengecas Telefon & Power Bank' },
+      { category: 'house_homestay', text: 'Extension Plug / Soket Tambahan' },
+      { category: 'food_gifts', text: 'Buah Tangan Khas / Kuih Tradisi' },
+      { category: 'kids_elderly', text: 'Minyak Telon / Ubatan Anak Kecil' }
     ];
 
     suggestions.forEach((sug) => {
@@ -125,8 +126,8 @@ export const PackingChecklist: React.FC<PackingChecklistProps> = ({
         <input
           type="text"
           value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Cth: Ubat darah tinggi Tok / Extension plug / Buah tangan..."
+          onChange={(e) => setInputText(toTitleCase(e.target.value))}
+          placeholder="Cth: Ubat Darah Tinggi Tok / Extension Plug / Buah Tangan..."
           className="flex-1 px-3.5 py-2 text-xs bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
 

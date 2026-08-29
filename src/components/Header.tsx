@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
                     title="Klik untuk paksa segerakkan semua data ke Google Cloud Firestore"
                   >
                     <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
-                    <span>{isSyncing ? 'Menyegerakkan...' : '⚡ Segerak Google'}</span>
+                    <span>{isSyncing ? 'Sync...' : '⚡ Segerak Google'}</span>
                   </button>
                 ) : isGuest ? (
                   <span
