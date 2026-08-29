@@ -33,6 +33,7 @@ interface StayContextType {
   duplicateStay: (id: string) => Promise<void>;
   addAgendaItem: (item: Omit<AgendaItem, 'id' | 'userId'>) => Promise<string>;
   updateAgendaItem: (id: string, updates: Partial<AgendaItem>) => Promise<void>;
+  batchUpdateAgendaItems: (updatesList: Array<{ id: string; updates: Partial<AgendaItem> }>) => Promise<void>;
   deleteAgendaItem: (id: string) => Promise<void>;
   toggleAgendaComplete: (id: string) => Promise<void>;
   addChecklistItem: (item: Omit<ChecklistItem, 'id' | 'userId'>) => Promise<string>;
@@ -68,14 +69,15 @@ function saveLocalData<T>(key: string, data: T) {
 }
 
 export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, requireAuth, isGuest } = useAuth();
+  const { user, requireAuth } = useAuth();
 
   // State for authenticated user stays
   const [userStays, setUserStays] = useState<Stay[]>([]);
   const [userAgendaItems, setUserAgendaItems] = useState<AgendaItem[]>([]);
   const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>([]);
   const [activeStayId, setActiveStayIdState] = useState<string | null>(null);
-  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(false);
+  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(true);
+  const [hasSeededInitial, setHasSeededInitial] = useState<boolean>(false);
 
   const isPersonalMode = !!user;
 
@@ -134,53 +136,103 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Standard Firebase Authenticated User
     setIsLoadingStays(true);
 
-    // Auto-migrate any local guest data from this device to the user's Firestore cloud account
-    const localStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
-    const localAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
-    const localChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
+    const initAndSubscribeUser = async () => {
+      // Check for local guest data to migrate to Firestore
+      const localStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
+      const localAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
+      const localChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
 
-    if (localStays.length > 0) {
-      (async () => {
+      if (localStays.length > 0) {
         try {
+          const batch = writeBatch(db);
           for (const s of localStays) {
             const stayDocRef = doc(db, 'users', user.uid, 'stays', s.id);
-            await setDoc(stayDocRef, { ...s, userId: user.uid, updatedAt: Date.now() }, { merge: true });
+            batch.set(stayDocRef, { ...s, userId: user.uid, updatedAt: Date.now() }, { merge: true });
 
             const sAgendas = localAgenda.filter((a) => a.stayId === s.id);
             for (const a of sAgendas) {
               const aRef = doc(db, 'users', user.uid, 'stays', s.id, 'agendaItems', a.id);
-              await setDoc(aRef, { ...a, userId: user.uid }, { merge: true });
+              batch.set(aRef, { ...a, userId: user.uid }, { merge: true });
             }
 
             const sChecklists = localChecklist.filter((c) => c.stayId === s.id);
             for (const c of sChecklists) {
               const cRef = doc(db, 'users', user.uid, 'stays', s.id, 'checklistItems', c.id);
-              await setDoc(cRef, { ...c, userId: user.uid }, { merge: true });
+              batch.set(cRef, { ...c, userId: user.uid }, { merge: true });
             }
           }
+          await batch.commit();
+
           // Clear local cache once safely migrated to cloud
-          try {
-            localStorage.removeItem(LOCAL_STAYS_KEY);
-            localStorage.removeItem(LOCAL_AGENDA_KEY);
-            localStorage.removeItem(LOCAL_CHECKLIST_KEY);
-            localStorage.removeItem(LOCAL_ACTIVE_ID_KEY);
-          } catch {}
+          localStorage.removeItem(LOCAL_STAYS_KEY);
+          localStorage.removeItem(LOCAL_AGENDA_KEY);
+          localStorage.removeItem(LOCAL_CHECKLIST_KEY);
+          localStorage.removeItem(LOCAL_ACTIVE_ID_KEY);
         } catch (migErr) {
           console.warn('Auto-migration note:', migErr);
         }
-      })();
-    }
+      }
+    };
+
+    initAndSubscribeUser();
 
     const staysRef = collection(db, 'users', user.uid, 'stays');
     const staysQuery = query(staysRef, orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(
       staysQuery,
-      (snapshot) => {
+      async (snapshot) => {
         const fetchedStays: Stay[] = [];
         snapshot.forEach((docSnap) => {
           fetchedStays.push(docSnap.data() as Stay);
         });
+
+        // If the authenticated user has zero stays in Firestore, auto-initialize their first personal stay
+        if (fetchedStays.length === 0 && !hasSeededInitial) {
+          setHasSeededInitial(true);
+          const initialStayId = `stay_${Date.now()}`;
+          const starterStay: Stay = {
+            ...SHOWCASE_STAYS[0],
+            id: initialStayId,
+            userId: user.uid,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+
+          try {
+            const batch = writeBatch(db);
+            const stayDocRef = doc(db, 'users', user.uid, 'stays', initialStayId);
+            batch.set(stayDocRef, starterStay);
+
+            SHOWCASE_AGENDA_ITEMS.forEach((item, index) => {
+              const aId = `agn_${Date.now()}_${index}`;
+              const aRef = doc(db, 'users', user.uid, 'stays', initialStayId, 'agendaItems', aId);
+              batch.set(aRef, {
+                ...item,
+                id: aId,
+                stayId: initialStayId,
+                userId: user.uid
+              });
+            });
+
+            SHOWCASE_CHECKLIST_ITEMS.forEach((chk, index) => {
+              const cId = `chk_${Date.now()}_${index}`;
+              const cRef = doc(db, 'users', user.uid, 'stays', initialStayId, 'checklistItems', cId);
+              batch.set(cRef, {
+                ...chk,
+                id: cId,
+                stayId: initialStayId,
+                userId: user.uid
+              });
+            });
+
+            await batch.commit();
+            // onSnapshot will automatically trigger with the newly created stay
+          } catch (seedErr) {
+            console.error('Failed to initialize initial stay:', seedErr);
+          }
+        }
+
         setUserStays(fetchedStays);
 
         setActiveStayIdState((prevActiveId) => {
@@ -200,7 +252,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, hasSeededInitial]);
 
   // 2. Subscribe to Agenda & Checklist of the currently active stay (for Firebase User)
   useEffect(() => {
@@ -536,6 +588,10 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return newItemId;
       }
 
+      // Ensure the parent stay document exists in the user's stays collection in Firestore
+      const stayDocRef = doc(db, 'users', user.uid, 'stays', activeStay.id);
+      await setDoc(stayDocRef, { ...activeStay, userId: user.uid, updatedAt: Date.now() }, { merge: true });
+
       const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
       const docRef = doc(colRef, newItemId);
       await setDoc(docRef, newItem);
@@ -560,10 +616,43 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      const stayDocRef = doc(db, 'users', user.uid, 'stays', activeStay.id);
+      await setDoc(stayDocRef, { ...activeStay, userId: user.uid, updatedAt: Date.now() }, { merge: true });
+
       const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
       await updateDoc(itemRef, updates);
     },
     [user, activeStay, requireAuth]
+  );
+
+  const batchUpdateAgendaItems = useCallback(
+    async (updatesList: Array<{ id: string; updates: Partial<AgendaItem> }>) => {
+      if (!user || !activeStay || updatesList.length === 0) return;
+
+      if (user.uid === 'guest-local-user') {
+        setUserAgendaItems((prev) => {
+          const updateMap = new Map(updatesList.map((u) => [u.id, u.updates]));
+          const next = prev.map((a) => {
+            const up = updateMap.get(a.id);
+            return up ? { ...a, ...up } : a;
+          });
+          saveLocalData(LOCAL_AGENDA_KEY, next);
+          return next;
+        });
+        return;
+      }
+
+      const stayDocRef = doc(db, 'users', user.uid, 'stays', activeStay.id);
+      await setDoc(stayDocRef, { ...activeStay, userId: user.uid, updatedAt: Date.now() }, { merge: true });
+
+      const batch = writeBatch(db);
+      for (const item of updatesList) {
+        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', item.id);
+        batch.update(itemRef, item.updates);
+      }
+      await batch.commit();
+    },
+    [user, activeStay]
   );
 
   const deleteAgendaItem = useCallback(
@@ -636,6 +725,9 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return newItemId;
       }
+
+      const stayDocRef = doc(db, 'users', user.uid, 'stays', activeStay.id);
+      await setDoc(stayDocRef, { ...activeStay, userId: user.uid, updatedAt: Date.now() }, { merge: true });
 
       const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
       const docRef = doc(colRef, newItemId);
@@ -768,6 +860,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         duplicateStay,
         addAgendaItem,
         updateAgendaItem,
+        batchUpdateAgendaItems,
         deleteAgendaItem,
         toggleAgendaComplete,
         addChecklistItem,

@@ -27,7 +27,7 @@ export interface AgendaItem {
   id: string;
   stayId: string;
   userId?: string;
-  dayNumber: number; // 1, 2, 3, 4...
+  dayNumber: number; // 0 = Belum dijadualkan (Pool Perancangan), 1..N = Hari 1..N
   timeSlot: TimeSlot;
   timeSpecific?: string; // e.g. "08:30 AM" or "Lepas Subuh"
   title: string;

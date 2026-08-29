@@ -25,6 +25,7 @@ interface CalendarViewProps {
   onAddItem: (dayNumber: number, slot: TimeSlot) => void;
   onEditItem: (item: AgendaItem) => void;
   onToggleComplete: (id: string) => void;
+  onNavigateToPlan?: () => void;
 }
 
 export function CalendarView({
@@ -33,13 +34,15 @@ export function CalendarView({
   onSelectDayInAgenda,
   onAddItem,
   onEditItem,
-  onToggleComplete
+  onToggleComplete,
+  onNavigateToPlan
 }: CalendarViewProps) {
   // Modal/Drawer state for Full Day Detail
   const [selectedDayDetail, setSelectedDayDetail] = useState<number | null>(null);
 
   const duration = stay.durationDays || 3;
   const stayAgendas = agendaItems.filter((item) => item.stayId === stay.id);
+  const backlogItems = stayAgendas.filter((item) => !item.dayNumber || item.dayNumber === 0);
   const staySummary = formatStaySummary(stay);
 
   // Helper to compute date for day index (1-based)
@@ -129,6 +132,15 @@ export function CalendarView({
         </div>
 
         <div className="flex items-center gap-2">
+          {backlogItems.length > 0 && onNavigateToPlan && (
+            <button
+              type="button"
+              onClick={onNavigateToPlan}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-all cursor-pointer"
+            >
+              <span>📋 {backlogItems.length} dalam Backlog</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onAddItem(1, 'morning')}
@@ -139,6 +151,25 @@ export function CalendarView({
           </button>
         </div>
       </div>
+
+      {/* Backlog Alert banner if items exist */}
+      {backlogItems.length > 0 && onNavigateToPlan && (
+        <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-amber-950">
+            <span className="text-base">📋</span>
+            <span>
+              Anda mempunyai <strong>{backlogItems.length} perkara dirancang</strong> yang belum dijadualkan ke mana-mana hari.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onNavigateToPlan}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors self-start sm:self-auto cursor-pointer"
+          >
+            Susun Perancangan Sekarang →
+          </button>
+        </div>
+      )}
 
       {/* Responsive Calendar Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">

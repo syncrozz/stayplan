@@ -60,18 +60,18 @@ export const SHOWCASE_STAYS: Stay[] = [
 ];
 
 export const SHOWCASE_AGENDA_ITEMS: AgendaItem[] = [
-  // Day 1
+  // Day 1 (🚗 Travel Day & Arrival)
   {
     id: 'showcase-a1',
     stayId: 'showcase-family-getaway',
     dayNumber: 1,
     timeSlot: 'morning',
     timeSpecific: '8:30 pagi',
-    title: 'Bertolak Perjalanan & Singgah Sarapan Pagi',
-    description: 'Pandu santai, singgah sebentar minum kopi dan sarapan bersama keluarga.',
-    priority: 'logistics',
-    locationName: 'Hentian Rehat / Lebuhraya',
-    personInCharge: 'Pemandu',
+    title: 'Bertolak Perjalanan & Makan Nasi Dagang',
+    description: 'Pandu santai, singgah sarapan nasi dagang panas bersama keluarga.',
+    priority: 'must_do',
+    locationName: 'Warung Nasi Dagang / R&R',
+    personInCharge: 'Pemandu & Abah',
     isCompleted: true
   },
   {
@@ -79,9 +79,9 @@ export const SHOWCASE_AGENDA_ITEMS: AgendaItem[] = [
     stayId: 'showcase-family-getaway',
     dayNumber: 1,
     timeSlot: 'afternoon',
-    timeSpecific: '3:00 petang',
+    timeSpecific: '3:30 petang',
     title: 'Daftar Masuk Homestay & Rehat Melepaskan Lelah',
-    description: 'Buka kunci, susun beg dan berehat seketika dalam suasana sejuk selesa.',
+    description: 'Buka kunci, susun beg dan berehat seketika dalam suasana selesa.',
     priority: 'must_do',
     locationName: 'Ruang Tamu Homestay',
     personInCharge: 'Semua',
@@ -93,71 +93,71 @@ export const SHOWCASE_AGENDA_ITEMS: AgendaItem[] = [
     dayNumber: 1,
     timeSlot: 'evening',
     timeSpecific: '7:30 malam',
-    title: 'Makan Malam Santai Bersama',
+    title: 'Makan Kedai Kak Nurul & Santai Kopi',
     description: 'Nikmati hidangan panas santai malam pertama tanpa tergesa-gesa.',
     priority: 'food',
-    locationName: 'Kedai Makan Pilihan',
+    locationName: 'Kedai Kak Nurul',
     personInCharge: 'Semua',
     isCompleted: false
   },
 
-  // Day 2
+  // Day 2 (🏠 Stay Day 1 - Full Activities)
   {
     id: 'showcase-a4',
     stayId: 'showcase-family-getaway',
     dayNumber: 2,
     timeSlot: 'morning',
-    timeSpecific: '9:00 pagi',
-    title: 'Lawatan Santai Pagi & Udara Segar',
-    description: 'Aktiviti santai pagi menikmati pemandangan alam semula jadi.',
+    timeSpecific: '9:30 pagi',
+    title: 'Ziarah Tok & Singgah Rumah Ayah',
+    description: 'Kunjung mesra, bertanya khabar dan luang masa berkualiti.',
     priority: 'must_do',
-    locationName: 'Taman / Ladang Segar',
-    personInCharge: 'Ketua Rombongan',
-    isCompleted: false
-  },
-  {
-    id: 'showcase-a4-mid',
-    stayId: 'showcase-family-getaway',
-    dayNumber: 2,
-    timeSlot: 'midday',
-    timeSpecific: '12:30 tengahari',
-    title: 'Makan Tengahari Masakan Tempatan & Solat Zohor',
-    description: 'Menikmati hidangan tengahari bersama dan berehat seketika.',
-    priority: 'food',
-    locationName: 'Restoran Pilihan Tempatan',
-    personInCharge: 'Semua',
+    locationName: 'Rumah Tok',
+    personInCharge: 'Keluarga',
     isCompleted: false
   },
   {
     id: 'showcase-a5',
     stayId: 'showcase-family-getaway',
     dayNumber: 2,
-    timeSlot: 'afternoon',
-    timeSpecific: '4:30 petang',
-    title: 'Waktu Bebas & Minum Petang',
-    description: 'Beri ruang untuk berehat atau aktiviti ringan tanpa jadual padat.',
-    priority: 'rest',
-    locationName: 'Kafe / Anjung Homestay',
-    personInCharge: 'Bebas',
+    timeSlot: 'midday',
+    timeSpecific: '12:30 tengahari',
+    title: 'Gi Kenduri Ayoh Lie',
+    description: 'Hadiri jamuan kenduri kahwin, ucap tahniah dan jumpa sanak-saudara.',
+    priority: 'must_do',
+    locationName: 'Dewan / Rumah Ayoh Lie',
+    personInCharge: 'Semua',
     isCompleted: false
   },
   {
     id: 'showcase-a6',
     stayId: 'showcase-family-getaway',
     dayNumber: 2,
+    timeSlot: 'afternoon',
+    timeSpecific: '4:30 petang',
+    title: 'Pergi Pantai & Bawa Anak Jalan-jalan',
+    description: 'Angin petang segar, minum air kelapa dan anak-anak main pasir pantai.',
+    priority: 'optional',
+    locationName: 'Pantai Batu Buruk / Teluk Ketapang',
+    personInCharge: 'Ibu & Anak-anak',
+    isCompleted: false
+  },
+  {
+    id: 'showcase-a7',
+    stayId: 'showcase-family-getaway',
+    dayNumber: 2,
     timeSlot: 'evening',
     timeSpecific: '8:00 malam',
-    title: 'Sesi Sembang Malam & Permainan Keluarga',
+    title: 'Jumpa Keluarga & Sembang Santai Malam',
     description: 'Waktu berkualiti bersama borak santai dan bersuai kenal.',
     priority: 'optional',
-    locationName: 'Ruang Tamu',
+    locationName: 'Ruang Tamu Homestay',
     personInCharge: 'Semua',
     isCompleted: false
   },
 
-  // Day 3
+  // Day 3 (🚗 Return Travel Day)
   {
-    id: 'showcase-a7',
+    id: 'showcase-a8',
     stayId: 'showcase-family-getaway',
     dayNumber: 3,
     timeSlot: 'morning',
@@ -167,6 +167,34 @@ export const SHOWCASE_AGENDA_ITEMS: AgendaItem[] = [
     priority: 'must_do',
     locationName: 'Homestay',
     personInCharge: 'Semua',
+    isCompleted: false
+  },
+
+  // 📋 Unscheduled Pool / Backlog (dayNumber = 0: Things To Do planned without fixed dates)
+  {
+    id: 'showcase-a9',
+    stayId: 'showcase-family-getaway',
+    dayNumber: 0,
+    timeSlot: 'afternoon',
+    timeSpecific: '',
+    title: 'Beli Keropok Lekor & Buah Tangan',
+    description: 'Singgah kedai keropok panas untuk bawa balik ke rakan & jiran.',
+    priority: 'optional',
+    locationName: 'Pasar Payang / Gerai Keropok',
+    personInCharge: 'Kak Long',
+    isCompleted: false
+  },
+  {
+    id: 'showcase-a10',
+    stayId: 'showcase-family-getaway',
+    dayNumber: 0,
+    timeSlot: 'afternoon',
+    timeSpecific: '',
+    title: 'Rehat Santai & Minum Kopi Petang',
+    description: 'Jika ada kelapangan waktu petang, rehat tanpa tergesa-gesa.',
+    priority: 'rest',
+    locationName: 'Anjung Homestay',
+    personInCharge: 'Bebas',
     isCompleted: false
   }
 ];

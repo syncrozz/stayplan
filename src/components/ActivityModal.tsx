@@ -136,6 +136,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
                   onChange={(e) => setDayNumber(Number(e.target.value))}
                   className="px-2.5 py-1 text-xs bg-white border border-stone-300 rounded-lg text-stone-800 font-bold focus:ring-2 focus:ring-amber-500"
                 >
+                  <option value={0}>📋 Belum Dijadualkan (Pool)</option>
                   {Array.from({ length: stay.durationDays || 3 }).map((_, idx) => (
                     <option key={idx + 1} value={idx + 1}>
                       Hari {idx + 1}

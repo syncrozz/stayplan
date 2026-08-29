@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AgendaItem, TimeSlot, ActivityPriority, Stay } from '../types';
 import { TIME_SLOTS, PRIORITY_CONFIG } from '../utils/constants';
 import { getDayContextLabel } from '../utils/formatters';
+import { useStay } from '../context/StayContext';
 import {
   Plus,
   Check,
@@ -12,15 +13,17 @@ import {
   User,
   Star,
   Palmtree,
-  Utensils,
-  Coffee,
-  Car,
   Filter,
   CheckCircle2,
   Calendar,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  ArrowRight,
+  Layers,
+  HelpCircle
 } from 'lucide-react';
 import { PacingAdviceCard } from './PacingAdviceCard';
+import { OrganisePlanModal } from './OrganisePlanModal';
 
 interface AgendaBoardProps {
   stay: Stay;
@@ -30,6 +33,7 @@ interface AgendaBoardProps {
   onEditItem: (item: AgendaItem) => void;
   onDeleteItem: (id: string) => void;
   onToggleComplete: (id: string) => void;
+  onNavigateToPlan?: () => void;
 }
 
 export const AgendaBoard: React.FC<AgendaBoardProps> = ({
@@ -39,32 +43,136 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   onAddItem,
   onEditItem,
   onDeleteItem,
-  onToggleComplete
+  onToggleComplete,
+  onNavigateToPlan
 }) => {
+  const { updateAgendaItem, batchUpdateAgendaItems, addAgendaItem } = useStay();
   const [selectedDay, setSelectedDay] = useState<number>(initialSelectedDay);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [isOrganiseModalOpen, setIsOrganiseModalOpen] = useState(false);
+  const [showBacklogTray, setShowBacklogTray] = useState(true);
 
   const daysCount = stay.durationDays || 3;
+
+  // Unscheduled Backlog items (dayNumber === 0 or undefined)
+  const backlogItems = agendaItems.filter((item) => !item.dayNumber || item.dayNumber === 0);
+
+  // Items for selected day (or all scheduled items if selectedDay === 0)
   const filteredAgendas = agendaItems.filter((item) => {
-    const dayMatch = selectedDay === 0 ? true : item.dayNumber === selectedDay;
-    if (!dayMatch) return false;
+    // If selectedDay is 0 (all days), show only scheduled items (dayNumber > 0)
+    if (selectedDay === 0) {
+      if (!item.dayNumber || item.dayNumber === 0) return false;
+    } else {
+      if (item.dayNumber !== selectedDay) return false;
+    }
 
     if (priorityFilter === 'all') return true;
     if (priorityFilter === 'incomplete') return !item.isCompleted;
+    if (priorityFilter === 'must_do') return item.priority === 'must_do';
+    if (priorityFilter === 'optional') return item.priority !== 'must_do';
     return item.priority === priorityFilter;
   });
 
   const activeDayContext = selectedDay > 0 ? getDayContextLabel(stay, selectedDay) : null;
 
-  // Core 4 time-of-day blocks (with fallback for flexible if existing data exists)
+  // Core 4 time-of-day blocks
   const hasFlexibleItems = filteredAgendas.some((i) => i.timeSlot === 'flexible');
   const slotKeys: TimeSlot[] = hasFlexibleItems
     ? ['morning', 'midday', 'afternoon', 'evening', 'flexible']
     : ['morning', 'midday', 'afternoon', 'evening'];
 
+  // Quick move item to day
+  const handleMoveDay = async (item: AgendaItem, targetDay: number) => {
+    await updateAgendaItem(item.id, { dayNumber: targetDay });
+  };
+
+  // Quick 1-click schedule from backlog into currently selected day
+  const handleScheduleFromBacklog = async (item: AgendaItem, targetSlot: TimeSlot = 'morning') => {
+    const targetDay = selectedDay === 0 ? 1 : selectedDay;
+    await updateAgendaItem(item.id, {
+      dayNumber: targetDay,
+      timeSlot: targetSlot
+    });
+  };
+
+  // Quick 1-click toggle priority
+  const handleTogglePriority = async (item: AgendaItem) => {
+    const nextPriority: ActivityPriority = item.priority === 'must_do' ? 'optional' : 'must_do';
+    await updateAgendaItem(item.id, { priority: nextPriority });
+  };
+
   return (
     <div id="agenda-board" className="space-y-6">
-      {/* Day Selector Pills & Controls */}
+      
+      {/* 1. Unscheduled Backlog Tray (if any items exist) */}
+      {backlogItems.length > 0 && (
+        <div className="bg-amber-50/90 rounded-2xl border border-amber-200 p-4 shadow-2xs space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-md bg-amber-500 text-white text-xs">📋</span>
+              <div>
+                <h3 className="text-xs sm:text-sm font-black text-amber-950">
+                  Belum Dijadualkan ({backlogItems.length} aktiviti dalam pool perancangan)
+                </h3>
+                <p className="text-[11px] text-amber-800">
+                  Tarik atau klik &quot;+ Jadualkan&quot; untuk masukkan aktiviti ke dalam Hari {selectedDay === 0 ? 1 : selectedDay}.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsOrganiseModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-98"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Susun Automatik</span>
+              </button>
+
+              {onNavigateToPlan && (
+                <button
+                  type="button"
+                  onClick={onNavigateToPlan}
+                  className="px-2.5 py-1.5 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  Urus Perancangan
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Horizontal list of backlog chips */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            {backlogItems.map((bItem) => {
+              const isWajib = bItem.priority === 'must_do';
+              return (
+                <div
+                  key={bItem.id}
+                  className="bg-white border border-amber-200/90 rounded-xl p-2.5 shadow-2xs flex items-center justify-between gap-3 text-xs min-w-[220px] max-w-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs">{isWajib ? '⭐' : '🌿'}</span>
+                    <span className="font-bold text-stone-900 truncate">{bItem.title}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleFromBacklog(bItem)}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-lg text-[11px] transition-all cursor-pointer"
+                    title={`Masukkan ke Hari ${selectedDay === 0 ? 1 : selectedDay}`}
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Hari {selectedDay === 0 ? 1 : selectedDay}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Day Selector Pills & Controls */}
       <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
@@ -85,7 +193,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                   type="button"
                   id={`day-tab-${dayNum}`}
                   onClick={() => setSelectedDay(dayNum)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 border ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 border cursor-pointer ${
                     isSelected
                       ? isTravel
                         ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
@@ -95,10 +203,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                       : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
                   }`}
                 >
+                  <span>{isTravel ? '🚗' : '🏠'}</span>
                   <span>{dayContext.label}</span>
                   {mustCount > 0 && (
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
                         isSelected
                           ? 'bg-black/20 text-white'
                           : isTravel
@@ -116,65 +225,82 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
             <button
               type="button"
               onClick={() => setSelectedDay(0)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 border cursor-pointer ${
                 selectedDay === 0
                   ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
                   : 'bg-stone-50 hover:bg-stone-100 text-stone-600 border-stone-200'
               }`}
             >
-              Semua Hari ({agendaItems.length})
+              Semua Hari ({agendaItems.filter((i) => (i.dayNumber || 0) > 0).length})
             </button>
           </div>
 
-          {/* Priority Filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-2.5 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-lg text-stone-700 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500"
+          {/* Priority Filter & Susun Button */}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <div className="flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-xl text-stone-700 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500"
+              >
+                <option value="all">Semua Jenis</option>
+                <option value="must_do">⭐ Wajib Sahaja</option>
+                <option value="optional">🌿 Pilihan Sahaja</option>
+                <option value="food">🍽️ Makan</option>
+                <option value="rest">☕ Rehat</option>
+                <option value="logistics">🚗 Logistik</option>
+                <option value="incomplete">Belum Selesai</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsOrganiseModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer"
             >
-              <option value="all">Semua Jenis</option>
-              <option value="must_do">⭐ Wajib Sahaja</option>
-              <option value="optional">🌴 Pilihan Sahaja</option>
-              <option value="food">🍽️ Makan</option>
-              <option value="rest">☕ Rehat</option>
-              <option value="logistics">🚗 Logistik</option>
-              <option value="incomplete">Belum Selesai</option>
-            </select>
+              <Sparkles className="w-3 h-3" />
+              <span>Susun</span>
+            </button>
           </div>
         </div>
 
         {/* Selected Day Context Banner */}
         {activeDayContext && (
           <div
-            className={`p-2.5 sm:p-3 rounded-xl border flex items-center gap-2 text-xs ${
+            className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs ${
               activeDayContext.type === 'travel_day'
                 ? 'bg-orange-50/80 border-orange-200 text-orange-950'
                 : 'bg-amber-50/80 border-amber-200 text-amber-950'
             }`}
           >
-            <span className="text-base">{activeDayContext.type === 'travel_day' ? '🚗' : '🏠'}</span>
-            <div>
-              <span className="font-extrabold">{activeDayContext.label}:</span>{' '}
-              <span className="text-stone-600">
-                {activeDayContext.type === 'travel_day'
-                  ? 'Hari perjalanan (bertolak / pulang). Fokuskan perancangan kepada waktu bertolak, persinggahan R&R, dan logistik kenderaan.'
-                  : 'Hari penginapan penuh. Masa terbaik untuk agenda lawatan, makan-makan tempatan, dan santai bersama.'}
-              </span>
+            <div className="flex items-center gap-2">
+              <span className="text-base">{activeDayContext.type === 'travel_day' ? '🚗' : '🏠'}</span>
+              <div>
+                <span className="font-extrabold">{activeDayContext.label}:</span>{' '}
+                <span className="text-stone-600">
+                  {activeDayContext.type === 'travel_day'
+                    ? 'Hari perjalanan (bertolak / pulang). Fokuskan perancangan kepada waktu perjalanan, persinggahan R&R, dan logistik santai.'
+                    : 'Hari penginapan penuh. Waktu terbaik untuk agenda lawatan penting, kenduri, ziarah, makan santai & masa bersama.'}
+                </span>
+              </div>
             </div>
+
+            <span className="shrink-0 font-bold px-2 py-0.5 rounded-md bg-white border border-stone-200 text-stone-700">
+              {filteredAgendas.length} aktiviti
+            </span>
           </div>
         )}
       </div>
 
-      {/* Pacing Advice Card */}
+      {/* 3. Pacing Advice Card */}
       <PacingAdviceCard
         agendaItems={agendaItems}
         selectedDay={selectedDay}
         totalDays={stay.durationDays}
       />
 
-      {/* Time Slots Grid */}
+      {/* 4. Time Slots Grid */}
       <div className="space-y-6">
         {slotKeys.map((slotKey) => {
           const slotMeta = TIME_SLOTS[slotKey];
@@ -186,7 +312,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               id={`slot-section-${slotKey}`}
               className="bg-white rounded-2xl border border-stone-200 shadow-2xs overflow-hidden"
             >
-              {/* Slot Header - Clean Time of Day without rigid clock ranges */}
+              {/* Slot Header */}
               <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 bg-stone-50/90 border-b border-stone-200">
                 <div className="flex items-center gap-2.5">
                   <span className="text-xl">{slotMeta.icon}</span>
@@ -201,7 +327,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                 <button
                   type="button"
                   onClick={() => onAddItem(selectedDay === 0 ? 1 : selectedDay, slotKey)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-100/80 hover:bg-amber-200 rounded-xl transition-all active:scale-98"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-100/80 hover:bg-amber-200 rounded-xl transition-all active:scale-98 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah Aktiviti</span>
@@ -212,23 +338,26 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               <div className="p-4 space-y-3">
                 {slotItems.map((item) => {
                   const pConfig = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.optional;
+                  const isWajib = item.priority === 'must_do';
 
                   return (
                     <div
                       key={item.id}
-                      className={`p-4 rounded-xl border transition-all ${pConfig.borderClass} ${
+                      className={`p-4 rounded-xl border transition-all ${
+                        isWajib ? 'border-l-4 border-l-amber-500 border-amber-200' : 'border-stone-200'
+                      } ${
                         item.isCompleted
-                          ? 'bg-stone-50/70 border-stone-200 opacity-75'
-                          : 'bg-white hover:shadow-2xs border-stone-200'
+                          ? 'bg-stone-50/70 opacity-75'
+                          : 'bg-white hover:shadow-2xs'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         {/* Checkbox and Content */}
-                        <div className="flex items-start gap-3 flex-1">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
                           <button
                             type="button"
                             onClick={() => onToggleComplete(item.id)}
-                            className={`mt-0.5 w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0 ${
+                            className={`mt-0.5 w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0 cursor-pointer ${
                               item.isCompleted
                                 ? 'bg-emerald-600 border-emerald-600 text-white'
                                 : 'border-stone-300 bg-white hover:border-amber-500'
@@ -249,7 +378,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                                 {item.title}
                               </h4>
 
-                              {/* Specific Time (Optional Detail) */}
+                              {/* Specific Time */}
                               {item.timeSpecific && (
                                 <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 bg-amber-100/70 border border-amber-200/80 px-2 py-0.5 rounded-md">
                                   <Clock className="w-3 h-3 text-amber-700" />
@@ -258,8 +387,8 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                               )}
                             </div>
 
-                            {/* Secondary Metadata Chips */}
-                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            {/* Secondary Metadata Chips & Priority Toggle */}
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
                               {/* Day badge if in all days view */}
                               {selectedDay === 0 && (
                                 <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-stone-100 text-stone-700 border border-stone-200">
@@ -267,12 +396,19 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                                 </span>
                               )}
 
-                              {/* Priority Badge */}
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] sm:text-[11px] rounded-md border ${pConfig.badgeClass}`}
+                              {/* 1-Click Priority Toggle Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePriority(item)}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] sm:text-[11px] rounded-md border font-extrabold transition-all cursor-pointer active:scale-95 ${
+                                  isWajib
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                                }`}
+                                title="Klik untuk tukar keutamaan (Wajib / Pilihan)"
                               >
-                                {pConfig.label}
-                              </span>
+                                <span>{isWajib ? '⭐ Wajib' : '🌿 Pilihan'}</span>
+                              </button>
 
                               {/* Location */}
                               {item.locationName && (
@@ -300,20 +436,36 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-1 shrink-0">
+                        {/* Quick Day Switcher & Actions */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Move to another day dropdown */}
+                          <select
+                            value={item.dayNumber}
+                            onChange={(e) => handleMoveDay(item, Number(e.target.value))}
+                            className="text-[11px] font-bold bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-stone-700 hover:bg-stone-100 cursor-pointer"
+                            title="Tukar hari atau kembalikan ke Belum Dijadualkan"
+                          >
+                            {Array.from({ length: daysCount }).map((_, dIdx) => (
+                              <option key={dIdx + 1} value={dIdx + 1}>
+                                Hari {dIdx + 1}
+                              </option>
+                            ))}
+                            <option value={0}>📋 Belum Dijadualkan</option>
+                          </select>
+
                           <button
                             type="button"
                             onClick={() => onEditItem(item)}
-                            className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
+                            className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
                             title="Sunting aktiviti"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
+
                           <button
                             type="button"
                             onClick={() => onDeleteItem(item.id)}
-                            className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Padam aktiviti"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -339,6 +491,15 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
           );
         })}
       </div>
+
+      {/* Smart Organiser Modal */}
+      <OrganisePlanModal
+        isOpen={isOrganiseModalOpen}
+        onClose={() => setIsOrganiseModalOpen(false)}
+        stay={stay}
+        agendaItems={agendaItems}
+        onApplyDistribution={batchUpdateAgendaItems}
+      />
     </div>
   );
 };

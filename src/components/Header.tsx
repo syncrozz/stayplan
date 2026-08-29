@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </div>
               <p className="text-xs text-stone-500 font-medium hidden md:block">
-                “Plan the stay, not just the calendar.”
+                Plan the stay, don&apos;t miss something
               </p>
             </div>
           </div>
