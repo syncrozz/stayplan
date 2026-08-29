@@ -28,6 +28,12 @@ interface StayContextType {
   isSyncing: boolean;
   lastSyncTime: number | null;
   syncError: string | null;
+  hasUnsavedChanges: boolean;
+  unsavedCount: number;
+  saveFeedback: { type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null;
+  saveAndSync: (customSuccessMsg?: string) => Promise<{ success: boolean; message: string; staysCount: number }>;
+  markChangesMade: () => void;
+  clearSaveFeedback: () => void;
   forceSyncWithCloud: () => Promise<{ success: boolean; message: string; staysCount: number }>;
   addStay: (stay: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<string>;
   updateStay: (id: string, updates: Partial<Stay>) => Promise<void>;
@@ -134,6 +140,20 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => Date.now());
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Unsaved changes tracking & Save-to-Google sync status
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [unsavedCount, setUnsavedCount] = useState<number>(0);
+  const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null>(null);
+
+  const markChangesMade = useCallback(() => {
+    setHasUnsavedChanges(true);
+    setUnsavedCount((prev) => prev + 1);
+  }, []);
+
+  const clearSaveFeedback = useCallback(() => {
+    setSaveFeedback(null);
+  }, []);
 
   const isPersonalMode = !!user;
 
@@ -263,21 +283,56 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const now = Date.now();
       setLastSyncTime(now);
+      setHasUnsavedChanges(false);
+      setUnsavedCount(0);
 
       return {
         success: true,
-        message: `Berjaya disegerakkan! ${confirmedStays.length} pelan stay, ${confirmedAgendas.length} aktiviti dan ${confirmedChecklists.length} item semakan aktif di akaun Google anda.`,
+        message: `Berjaya di-sync! ${confirmedStays.length} pelan stay, ${confirmedAgendas.length} aktiviti dan ${confirmedChecklists.length} item semakan aktif di akaun Google anda.`,
         staysCount: confirmedStays.length
       };
     } catch (err: any) {
       console.error('Force Cloud Sync Error:', err);
       const errMsg = err?.message || 'Gagal menyelaraskan dengan Firestore';
       setSyncError(errMsg);
-      return { success: false, message: `Ralat penyegerakan: ${errMsg}`, staysCount: 0 };
+      return { success: false, message: `Ralat sync: ${errMsg}`, staysCount: 0 };
     } finally {
       setIsSyncing(false);
     }
   }, [user, userStays, userAgendaItems, userChecklistItems]);
+
+  // One-click Save & Sync to Google Account
+  const saveAndSync = useCallback(
+    async (customSuccessMsg?: string): Promise<{ success: boolean; message: string; staysCount: number }> => {
+      if (!user || user.uid === 'guest-local-user') {
+        requireAuth(() => {}, 'Log masuk dengan Google untuk menyimpan dan sync semua data ke akaun Google anda.');
+        return {
+          success: false,
+          message: 'Sila log masuk dengan Google untuk menyimpan dan sync ke Google Account.',
+          staysCount: 0
+        };
+      }
+
+      const res = await forceSyncWithCloud();
+      if (res.success) {
+        setHasUnsavedChanges(false);
+        setUnsavedCount(0);
+        setSaveFeedback({
+          type: 'success',
+          message: customSuccessMsg || 'Semua perubahan berjaya disimpan & di-sync ke Akaun Google anda!',
+          timestamp: Date.now()
+        });
+      } else {
+        setSaveFeedback({
+          type: 'error',
+          message: res.message || 'Gagal menyimpan ke Akaun Google.',
+          timestamp: Date.now()
+        });
+      }
+      return res;
+    },
+    [user, forceSyncWithCloud, requireAuth]
+  );
 
   // 1. Subscribe or load stays
   useEffect(() => {
@@ -607,6 +662,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       // 1. Optimistically update local state immediately (0ms UI lag)
+      markChangesMade();
       setUserStays((prev) => {
         const next = [newStay, ...prev];
         if (user.uid === 'guest-local-user') {
@@ -683,6 +739,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      markChangesMade();
       // Optimistic update
       setUserStays((prev) => {
         const next = prev.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: Date.now() } : s));
@@ -713,7 +770,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, requireAuth]
+    [user, requireAuth, markChangesMade]
   );
 
   const deleteStay = useCallback(
@@ -723,6 +780,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      markChangesMade();
       // Optimistic instant state update
       setUserStays((prev) => {
         const next = prev.filter((s) => s.id !== id);
@@ -779,7 +837,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, requireAuth]
+    [user, requireAuth, markChangesMade]
   );
 
   const duplicateStay = useCallback(
@@ -792,6 +850,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const target = userStays.find((s) => s.id === id);
       if (!target) return;
 
+      markChangesMade();
       const newStayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const duplicatedStay: Stay = {
         ...target,
@@ -884,7 +943,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, userStays, userAgendaItems, userChecklistItems, requireAuth]
+    [user, userStays, userAgendaItems, userChecklistItems, requireAuth, markChangesMade]
   );
 
   const addAgendaItem = useCallback(
@@ -894,6 +953,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
+      markChangesMade();
       const newItemId = `agn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newItem: AgendaItem = {
         ...item,
@@ -933,7 +993,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newItemId;
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay, requireAuth, markChangesMade]
   );
 
   const updateAgendaItem = useCallback(
@@ -943,6 +1003,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      markChangesMade();
       // Optimistic update
       setUserAgendaItems((prev) => {
         const next = prev.map((a) => (a.id === id ? { ...a, ...updates } : a));
@@ -968,13 +1029,14 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay, requireAuth, markChangesMade]
   );
 
   const batchUpdateAgendaItems = useCallback(
     async (updatesList: Array<{ id: string; updates: Partial<AgendaItem> }>) => {
       if (!user || !activeStay || updatesList.length === 0) return;
 
+      markChangesMade();
       const updateMap = new Map(updatesList.map((u) => [u.id, u.updates]));
 
       // Optimistic update
@@ -1009,7 +1071,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, activeStay]
+    [user, activeStay, markChangesMade]
   );
 
   const deleteAgendaItem = useCallback(
@@ -1019,6 +1081,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      markChangesMade();
       // Optimistic update
       setUserAgendaItems((prev) => {
         const next = prev.filter((a) => a.id !== id);
@@ -1044,7 +1107,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay, requireAuth, markChangesMade]
   );
 
   const toggleAgendaComplete = useCallback(
@@ -1054,6 +1117,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      markChangesMade();
       const existing = userAgendaItems.find((i) => i.id === id);
       if (!existing) return;
       const nextCompleted = !existing.isCompleted;
@@ -1083,7 +1147,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, activeStay, userAgendaItems, requireAuth]
+    [user, activeStay, userAgendaItems, requireAuth, markChangesMade]
   );
 
   const addChecklistItem = useCallback(
@@ -1093,6 +1157,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
+      markChangesMade();
       const newItemId = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newItem: ChecklistItem = {
         ...item,
@@ -1129,7 +1194,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newItemId;
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay, requireAuth, markChangesMade]
   );
 
   const toggleChecklistComplete = useCallback(
@@ -1138,6 +1203,8 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requireAuth(() => {}, 'Log masuk dengan Google untuk menanda senarai semak.');
         return;
       }
+
+      markChangesMade();
       const existing = userChecklistItems.find((i) => i.id === id);
       if (!existing) return;
       const nextCompleted = !existing.isCompleted;
@@ -1167,7 +1234,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, activeStay, userChecklistItems, requireAuth]
+    [user, activeStay, userChecklistItems, requireAuth, markChangesMade]
   );
 
   const deleteChecklistItem = useCallback(
@@ -1177,6 +1244,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      markChangesMade();
       // Optimistic update
       setUserChecklistItems((prev) => {
         const next = prev.filter((c) => c.id !== id);
@@ -1202,7 +1270,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })();
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay, requireAuth, markChangesMade]
   );
 
   const createFromStarterTemplate = useCallback(
@@ -1279,6 +1347,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isSyncing,
         lastSyncTime,
         syncError,
+        hasUnsavedChanges,
+        unsavedCount,
+        saveFeedback,
+        saveAndSync,
+        markChangesMade,
+        clearSaveFeedback,
         forceSyncWithCloud,
         addStay,
         updateStay,

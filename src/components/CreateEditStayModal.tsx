@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, MapPin, Wifi, Phone, KeyRound, Users, Plus, Trash2, Sparkles, Check, FileText, Car, Home } from 'lucide-react';
+import { X, Calendar, MapPin, Wifi, Phone, KeyRound, Users, Plus, Trash2, Sparkles, Check, FileText, Car, Home, Save } from 'lucide-react';
 import { Stay, StayType, DayType } from '../types';
 import { STAY_TYPES, DAY_TYPE_CONFIG } from '../utils/constants';
 import { getDayType, getStaySummaryCounts, getDayContextLabel, toTitleCase } from '../utils/formatters';
@@ -768,9 +768,10 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-xs transition-all"
+                className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-xs transition-all cursor-pointer"
               >
-                {isEditing ? 'Simpan Perubahan' : 'Mulakan StayPlan'}
+                <Save className="w-4 h-4" />
+                <span>{isEditing ? 'Simpan & Sync Perubahan' : 'Mulakan & Sync ke Google'}</span>
               </button>
             </div>
           </div>

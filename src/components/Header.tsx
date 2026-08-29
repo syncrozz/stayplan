@@ -15,7 +15,8 @@ import {
   Cloud,
   Smartphone,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Save
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -30,7 +31,16 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenStayList,
   onOpenShare
 }) => {
-  const { activeStay, isPersonalMode, isSyncing, forceSyncWithCloud, lastSyncTime } = useStay();
+  const {
+    activeStay,
+    isPersonalMode,
+    isSyncing,
+    forceSyncWithCloud,
+    lastSyncTime,
+    hasUnsavedChanges,
+    unsavedCount,
+    saveAndSync
+  } = useStay();
   const { user, userProfile, role, isAuthenticated, isGuest, openAuthModal, signOut } = useAuth();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
@@ -40,10 +50,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleManualSync = async () => {
     if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk menyelaraskan ke Cloud Firestore.');
+      openAuthModal('Log masuk dengan Google untuk menyelaraskan & menyimpan ke akaun Google anda.');
       return;
     }
-    const res = await forceSyncWithCloud();
+    const res = await saveAndSync('Berjaya disimpan & di-sync ke akaun Google!');
     setSyncFeedback(res.message);
     setTimeout(() => {
       setSyncFeedback(null);
@@ -96,10 +106,10 @@ export const Header: React.FC<HeaderProps> = ({
                         ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
                         : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
                     }`}
-                    title="Klik untuk paksa segerakkan semua data ke Google Cloud Firestore"
+                    title="Klik untuk paksa sync semua data ke Google Cloud Firestore"
                   >
                     <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
-                    <span>{isSyncing ? 'Sync...' : '⚡ Segerak Google'}</span>
+                    <span>{isSyncing ? 'Sync...' : '⚡ Sync Google'}</span>
                   </button>
                 ) : isGuest ? (
                   <span
@@ -152,6 +162,35 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons & Auth Gate */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Explicit Save & Sync Button */}
+            <button
+              id="header-save-sync-btn"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer ${
+                hasUnsavedChanges
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-400/50 animate-pulse'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              }`}
+              title="Simpan semua perubahan dan sync ke Google Account"
+            >
+              {isSyncing ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {isSyncing
+                  ? 'Menyimpan...'
+                  : hasUnsavedChanges
+                  ? `Simpan (${unsavedCount})`
+                  : 'Simpan & Sync'}
+              </span>
+              <span className="sm:hidden">
+                {isSyncing ? '...' : hasUnsavedChanges ? `💾 ${unsavedCount}` : '💾'}
+              </span>
+            </button>
+
             {/* All Stays Button */}
             <button
               id="header-all-stays-btn"
@@ -160,7 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Senarai Semua Stay"
             >
               <FolderKanban className="w-4 h-4 text-stone-600" />
-              <span className="hidden sm:inline">Semua Stay</span>
+              <span className="hidden md:inline">Semua Stay</span>
             </button>
 
             {/* Share / Export */}
@@ -240,7 +279,7 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors text-left"
                       >
                         <RefreshCw className={`w-4 h-4 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span>Paksa Segerak Google Cloud</span>
+                        <span>Paksa Sync Google Cloud</span>
                       </button>
 
                       <button

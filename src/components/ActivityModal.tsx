@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, MapPin, User, Tag, Sparkles, Check } from 'lucide-react';
+import { X, Clock, MapPin, User, Tag, Sparkles, Check, Save } from 'lucide-react';
 import { AgendaItem, TimeSlot, ActivityPriority, Stay } from '../types';
 import { TIME_SLOTS, PRIORITY_CONFIG } from '../utils/constants';
 import { toTitleCase } from '../utils/formatters';
@@ -299,9 +299,10 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-xs transition-all"
+              className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-98 rounded-xl shadow-xs transition-all cursor-pointer"
             >
-              {isEditing ? 'Simpan Perubahan' : 'Tambah ke Agenda'}
+              <Save className="w-4 h-4" />
+              <span>{isEditing ? 'Simpan & Sync Perubahan' : 'Simpan & Sync ke Google'}</span>
             </button>
           </div>
         </form>
