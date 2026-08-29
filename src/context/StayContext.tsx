@@ -91,7 +91,8 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoadingStays(false);
       },
       (error) => {
-        console.error('Error listening to user stays from Firestore:', error);
+        // Silently handle when database is still being provisioned in console
+        console.warn('Firestore sync note:', error.message || error);
         setIsLoadingStays(false);
       }
     );
