@@ -350,7 +350,7 @@ export const OrganisePlanModal: React.FC<OrganisePlanModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-base">{isTravel ? '🚗' : '🏠'}</span>
+                      <span className="text-base">{dayContext.icon}</span>
                       <div>
                         <h4 className="text-xs font-black">{dayContext.label}</h4>
                         <p className="text-[10px] text-stone-500">

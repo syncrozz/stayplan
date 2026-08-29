@@ -77,14 +77,14 @@ export function getDayContextLabel(stay: Partial<Stay>, dayNumber: number): {
     if (dayNumber === total && total >= 2) {
       return {
         type: 'travel_day',
-        label: '🚗 Perjalanan Balik',
+        label: 'Perjalanan Balik',
         shortLabel: 'Perjalanan Balik',
         icon: '🚗'
       };
     }
     return {
       type: 'travel_day',
-      label: '🚗 Perjalanan',
+      label: 'Perjalanan',
       shortLabel: 'Perjalanan',
       icon: '🚗'
     };
@@ -100,7 +100,7 @@ export function getDayContextLabel(stay: Partial<Stay>, dayNumber: number): {
 
   return {
     type: 'stay_day',
-    label: `🏠 Stay Day ${stayIndex}`,
+    label: `Stay Day ${stayIndex}`,
     shortLabel: `Stay Day ${stayIndex}`,
     icon: '🏠',
     stayDayIndex: stayIndex
@@ -151,7 +151,7 @@ export function generateWhatsAppMessage(stay: Stay, agendaItems: AgendaItem[], c
   for (let day = 1; day <= stay.durationDays; day++) {
     const dayItems = stayAgendas.filter((a) => a.dayNumber === day);
     const dayContext = getDayContextLabel(stay, day);
-    msg += `\n📌 *HARI ${day}: ${dayContext.label}*\n`;
+    msg += `\n📌 *HARI ${day}: ${dayContext.icon} ${dayContext.label}*\n`;
 
     if (dayItems.length === 0) {
       msg += `  _(Tiada aktiviti dirancang lagi)_\n`;

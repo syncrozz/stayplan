@@ -203,7 +203,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                       : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
                   }`}
                 >
-                  <span>{isTravel ? '🚗' : '🏠'}</span>
+                  <span>{dayContext.icon}</span>
                   <span>{dayContext.label}</span>
                   {mustCount > 0 && (
                     <span

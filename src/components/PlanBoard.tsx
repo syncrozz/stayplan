@@ -26,7 +26,8 @@ import {
   Clock,
   MapPin,
   User,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
 
 interface PlanBoardProps {
@@ -300,18 +301,29 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
                   : 'text-stone-600 hover:text-stone-900'
               }`}
             >
-              🌿 Pilihan
+              🌿 Santai
             </button>
           </div>
 
           {/* Submit Button */}
           <button
             type="submit"
+            id="quick-add-submit-button"
             disabled={!quickTitle.trim() || isAdding}
-            className="px-5 py-3 bg-stone-900 hover:bg-stone-800 disabled:opacity-40 active:scale-98 text-white text-xs font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            aria-label="Tambah Aktiviti"
+            className="px-5 py-3 bg-stone-900 hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed active:scale-98 text-white text-xs font-black rounded-2xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            <span>Tambah</span>
+            {isAdding ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                <span>Menambah...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                <span>Tambah</span>
+              </>
+            )}
           </button>
         </form>
 
@@ -519,7 +531,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
                       const ctx = getDayContextLabel(stay, dNum);
                       return (
                         <option key={dNum} value={dNum}>
-                          {ctx.type === 'travel_day' ? '🚗' : '🏠'} {ctx.label}
+                          {ctx.icon} {ctx.label}
                         </option>
                       );
                     })}

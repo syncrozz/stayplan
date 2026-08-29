@@ -237,7 +237,7 @@ export function CalendarView({
                             : 'bg-amber-100 text-amber-950 border-amber-300/80'
                         }`}
                       >
-                        <span>{dayContext.label}</span>
+                        <span>{dayContext.icon} {dayContext.label}</span>
                       </span>
                     </div>
 
