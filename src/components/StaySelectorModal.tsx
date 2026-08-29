@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Calendar, MapPin, Check, Edit2, Copy, Trash2, Download, Lock, Sparkles } from 'lucide-react';
+import { X, Plus, Calendar, MapPin, Check, Edit2, Copy, Trash2, Download, Lock, Sparkles, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useStay } from '../context/StayContext';
 import { useAuth } from '../context/AuthContext';
 import { STAY_TYPES } from '../utils/constants';
@@ -26,12 +26,25 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
     deleteStay,
     duplicateStay,
     exportDataJson,
-    isPersonalMode
+    isPersonalMode,
+    isSyncing,
+    forceSyncWithCloud
   } = useStay();
 
   const { isAuthenticated, openAuthModal } = useAuth();
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleForceSync = async () => {
+    if (!isAuthenticated) {
+      openAuthModal('Log masuk dengan Google untuk menyelaraskan ke Cloud Firestore.');
+      return;
+    }
+    const res = await forceSyncWithCloud();
+    setSyncStatusMsg(res.message);
+    setTimeout(() => setSyncStatusMsg(null), 5000);
+  };
 
   const handleExport = () => {
     const jsonStr = exportDataJson();
@@ -252,17 +265,39 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
           )}
         </div>
 
-        {/* Data Backup */}
-        <div className="pt-4 border-t border-stone-200 flex items-center justify-between text-xs text-stone-600">
-          <span>Sandaran data peribadi anda:</span>
-          <button
-            type="button"
-            onClick={handleExport}
-            className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-lg transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Eksport JSON
-          </button>
+        {/* Sync Status Banner */}
+        {syncStatusMsg && (
+          <div className="bg-stone-900 text-white text-xs font-semibold px-4 py-3 rounded-2xl flex items-center gap-2.5 animate-in fade-in duration-200">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="leading-snug">{syncStatusMsg}</span>
+          </div>
+        )}
+
+        {/* Data Backup & Cloud Sync */}
+        <div className="pt-4 border-t border-stone-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs text-stone-600">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleForceSync}
+              disabled={isSyncing}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Menyegerakkan...' : '⚡ Paksa Segerak Cloud (Sync)'}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between sm:justify-end gap-2">
+            <span className="text-[11px] text-stone-400">Sandaran fail:</span>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold rounded-xl transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Eksport JSON
+            </button>
+          </div>
         </div>
       </div>
     </div>

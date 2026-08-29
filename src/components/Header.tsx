@@ -13,7 +13,9 @@ import {
   Sparkles,
   Lock,
   Cloud,
-  Smartphone
+  Smartphone,
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -28,12 +30,25 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenStayList,
   onOpenShare
 }) => {
-  const { activeStay, isPersonalMode, isSyncing } = useStay();
+  const { activeStay, isPersonalMode, isSyncing, forceSyncWithCloud, lastSyncTime } = useStay();
   const { user, userProfile, role, isAuthenticated, isGuest, openAuthModal, signOut } = useAuth();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const stayTypeMeta = activeStay ? STAY_TYPES[activeStay.type] || STAY_TYPES.custom : null;
+
+  const handleManualSync = async () => {
+    if (!isAuthenticated) {
+      openAuthModal('Log masuk dengan Google untuk menyelaraskan ke Cloud Firestore.');
+      return;
+    }
+    const res = await forceSyncWithCloud();
+    setSyncFeedback(res.message);
+    setTimeout(() => {
+      setSyncFeedback(null);
+    }, 4000);
+  };
 
   // Close user dropdown when clicking outside
   useEffect(() => {
@@ -73,17 +88,19 @@ export const Header: React.FC<HeaderProps> = ({
                   Stay<span className="text-amber-600">Plan</span>
                 </h1>
                 {isAuthenticated && !isGuest ? (
-                  <span
-                    className={`hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-colors ${
+                  <button
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold tracking-tight rounded-lg border transition-all cursor-pointer shadow-2xs active:scale-95 ${
                       isSyncing
-                        ? 'bg-amber-50 text-amber-800 border border-amber-300'
-                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
                     }`}
-                    title={isSyncing ? 'Sedang menyimpan ke akaun Google...' : 'Data disegerakkan ke Akaun Google anda'}
+                    title="Klik untuk paksa segerakkan semua data ke Google Cloud Firestore"
                   >
-                    <Cloud className={`w-2.5 h-2.5 ${isSyncing ? 'text-amber-600 animate-pulse' : 'text-emerald-600'}`} />
-                    <span>{isSyncing ? 'Syncing...' : 'Google Sync'}</span>
-                  </span>
+                    <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
+                    <span>{isSyncing ? 'Menyegerakkan...' : '⚡ Segerak Google'}</span>
+                  </button>
                 ) : isGuest ? (
                   <span
                     onClick={() => openAuthModal('Log masuk dengan Google untuk sync pelan ini ke semua peranti anda secara automatik.')}
@@ -218,6 +235,17 @@ export const Header: React.FC<HeaderProps> = ({
                       <button
                         onClick={() => {
                           setIsUserMenuOpen(false);
+                          handleManualSync();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors text-left"
+                      >
+                        <RefreshCw className={`w-4 h-4 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span>Paksa Segerak Google Cloud</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
                           onOpenStayList();
                         }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-50 rounded-xl transition-colors text-left"
@@ -273,6 +301,16 @@ export const Header: React.FC<HeaderProps> = ({
 
         </div>
       </div>
+
+      {/* Sync Status Toast */}
+      {syncFeedback && (
+        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="bg-stone-900 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl border border-stone-700 flex items-center gap-2.5 max-w-md">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="leading-snug">{syncFeedback}</span>
+          </div>
+        </div>
+      )}
     </header>
   );
 };
