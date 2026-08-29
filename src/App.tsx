@@ -194,17 +194,7 @@ function StayPlanApp() {
     }
   };
 
-  // Loading indicator for initial auth
-  const isAppLoading = isAuthLoading && !isAuthenticated;
-  if (isAppLoading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-stone-50 text-stone-700">
-        <div className="w-10 h-10 border-3 border-amber-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-        <p className="text-sm font-semibold text-stone-800">Menyelaraskan StayPlan anda dengan Cloud...</p>
-        <p className="text-xs text-stone-500 mt-1">Memuatkan data agenda merentas peranti</p>
-      </div>
-    );
-  }
+  // Seamless loading - no blocking full-screen freeze
 
   // If user is authenticated and has 0 stays, render welcoming onboarding
   if (isAuthenticated && !activeStay) {

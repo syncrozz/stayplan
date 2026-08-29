@@ -93,6 +93,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
     const clean = quickTitle.trim();
     if (!clean) return;
 
+    setQuickTitle('');
     setIsAdding(true);
     try {
       await addAgendaItem({
@@ -107,7 +108,6 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
         description: '',
         notes: ''
       });
-      setQuickTitle('');
     } catch (err) {
       console.error('Failed adding plan item:', err);
     } finally {
