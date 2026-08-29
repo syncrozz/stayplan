@@ -402,8 +402,7 @@ function StayPlanApp() {
                 onClick={() => handleOpenEditStay(activeStay)}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors"
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>✏️ Sunting Stay</span>
+                <span>✏️ Edit Stay</span>
               </button>
 
               <button
@@ -413,7 +412,7 @@ function StayPlanApp() {
                 className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
               >
                 <Share2 className="w-3.5 h-3.5" />
-                <span>Kongsi (WhatsApp)</span>
+                <span>Kongsi</span>
               </button>
             </div>
 

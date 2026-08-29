@@ -4,6 +4,38 @@ import { Stay, StayType, DayType } from '../types';
 import { STAY_TYPES, DAY_TYPE_CONFIG } from '../utils/constants';
 import { getDayType, getStaySummaryCounts, getDayContextLabel } from '../utils/formatters';
 
+// Helper to calculate difference in calendar days (inclusive of start & end day)
+function getDaysDifference(startDateStr: string, endDateStr: string): number {
+  if (!startDateStr || !endDateStr) return 1;
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const [ey, em, ed] = endDateStr.split('-').map(Number);
+  const sDate = new Date(sy, sm - 1, sd);
+  const eDate = new Date(ey, em - 1, ed);
+  const diffMs = eDate.getTime() - sDate.getTime();
+  const days = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(1, days);
+}
+
+// Helper to add days to a date string (YYYY-MM-DD)
+function addDaysToDate(startDateStr: string, daysToAdd: number): string {
+  if (!startDateStr) return '';
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const date = new Date(sy, sm - 1, sd + daysToAdd);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Helper to construct fresh day types for N days (Day 1 = Travel, Day N = Travel if N>=2, Days 2..N-1 = Stay)
+function getDefaultDayTypes(totalDays: number): Record<number, DayType> {
+  const result: Record<number, DayType> = {};
+  for (let d = 1; d <= totalDays; d++) {
+    result[d] = (d === 1 || (d === totalDays && totalDays >= 2)) ? 'travel_day' : 'stay_day';
+  }
+  return result;
+}
+
 interface CreateEditStayModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -103,50 +135,63 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
       const defaultD = STAY_TYPES[newType].defaultDays;
       setDurationDays(defaultD);
       if (startDate) {
-        const end = new Date(new Date(startDate).getTime() + (defaultD - 1) * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
+        const end = addDaysToDate(startDate, defaultD - 1);
         setEndDate(end);
       }
-      // Recompute default day types
-      const newDTypes: Record<number, DayType> = {};
-      for (let d = 1; d <= defaultD; d++) {
-        newDTypes[d] = (d === 1 || (d === defaultD && defaultD >= 2)) ? 'travel_day' : 'stay_day';
-      }
-      setDayTypes(newDTypes);
+      setDayTypes(getDefaultDayTypes(defaultD));
     }
   };
 
   const handleStartDateChange = (dateVal: string) => {
     setStartDate(dateVal);
-    if (dateVal && durationDays) {
-      const end = new Date(new Date(dateVal).getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-      setEndDate(end);
+    if (dateVal) {
+      if (endDate) {
+        if (endDate >= dateVal) {
+          const days = getDaysDifference(dateVal, endDate);
+          setDurationDays(days);
+          setDayTypes(getDefaultDayTypes(days));
+        } else {
+          const newEnd = addDaysToDate(dateVal, durationDays - 1);
+          setEndDate(newEnd);
+          setDayTypes(getDefaultDayTypes(durationDays));
+        }
+      } else {
+        const newEnd = addDaysToDate(dateVal, durationDays - 1);
+        setEndDate(newEnd);
+        setDayTypes(getDefaultDayTypes(durationDays));
+      }
+    }
+  };
+
+  const handleEndDateChange = (dateVal: string) => {
+    setEndDate(dateVal);
+    if (dateVal) {
+      if (startDate) {
+        if (dateVal >= startDate) {
+          const days = getDaysDifference(startDate, dateVal);
+          setDurationDays(days);
+          setDayTypes(getDefaultDayTypes(days));
+        } else {
+          setStartDate(dateVal);
+          setDurationDays(1);
+          setDayTypes(getDefaultDayTypes(1));
+        }
+      } else {
+        setDurationDays(1);
+        setDayTypes(getDefaultDayTypes(1));
+      }
     }
   };
 
   const handleDurationChange = (days: number) => {
-    setDurationDays(days);
+    const validDays = Math.max(1, days);
+    setDurationDays(validDays);
     if (startDate) {
-      const end = new Date(new Date(startDate).getTime() + (days - 1) * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
+      const end = addDaysToDate(startDate, validDays - 1);
       setEndDate(end);
     }
-    // Update dayTypes for new duration
-    setDayTypes((prev) => {
-      const updated: Record<number, DayType> = {};
-      for (let d = 1; d <= days; d++) {
-        if (prev[d]) {
-          updated[d] = prev[d];
-        } else {
-          updated[d] = (d === 1 || (d === days && days >= 2)) ? 'travel_day' : 'stay_day';
-        }
-      }
-      return updated;
-    });
+    // Ensures Day 1 is travel, Day validDays is travel (if >=2), intermediate days are stay days
+    setDayTypes(getDefaultDayTypes(validDays));
   };
 
   const toggleDayType = (dayNumber: number) => {
@@ -328,18 +373,48 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                 />
               </div>
 
-              {/* Duration (2-4 Days recommended pills) */}
+              {/* Date Pickers (Tarikh Mula & Tarikh Akhir) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Tarikh Mula
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => handleStartDateChange(e.target.value)}
+                      className="w-full px-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-800 font-medium"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
+                    Tarikh Akhir
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      className="w-full px-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-800 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Duration (Placed below Date Pickers & automatically calculated from selected dates) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
                     Tempoh Tinggal (Hari)
                   </label>
-                  <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded-md">
-                    Disyorkan: 2–4 Hari
+                  <span className="text-[11px] text-amber-800 font-bold bg-amber-100/90 border border-amber-300/80 px-2 py-0.5 rounded-md">
+                    {durationDays} Hari ({Math.max(0, durationDays - 1)} Malam) · Auto-dikira
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {[2, 3, 4, 5].map((d) => (
+                  {[2, 3, 4, 5, 6, 7].map((d) => (
                     <button
                       key={d}
                       type="button"
@@ -350,36 +425,13 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
                           : 'bg-stone-50 hover:bg-stone-100 border-stone-300 text-stone-700'
                       }`}
                     >
-                      {d} Hari {d > 1 ? `(${d - 1}M)` : ''}
+                      {d}H {d > 1 ? `(${d - 1}M)` : ''}
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {/* Date Pickers */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1">Tarikh Mula</label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => handleStartDateChange(e.target.value)}
-                      className="w-full px-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-800"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1">Tarikh Akhir</label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full px-3.5 py-2 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-stone-800"
-                    />
-                  </div>
-                </div>
+                <p className="text-[10px] text-stone-500 mt-1">
+                  💡 Memilih tarikh mula & akhir akan mengira tempoh hari secara automatik (dan menetapkan Hari 1 & Hari Akhir sebagai Hari Perjalanan 🚗).
+                </p>
               </div>
 
               {/* Location Input */}
