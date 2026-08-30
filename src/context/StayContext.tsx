@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Stay, AgendaItem, ChecklistItem, StayType, SyncStatus } from '../types';
 import { SHOWCASE_STAYS, SHOWCASE_AGENDA_ITEMS, SHOWCASE_CHECKLIST_ITEMS } from '../data/defaultStays';
 import { getLocalTodayDate, getLocalDateWithOffset } from '../utils/formatters';
@@ -34,7 +34,7 @@ interface StayContextType {
   unsavedCount: number;
   saveFeedback: { type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null;
   saveAndSync: (customSuccessMsg?: string) => Promise<{ success: boolean; message: string; staysCount: number }>;
-  refreshFromCloud: () => Promise<{ success: boolean; message: string; staysCount: number }>;
+  refreshFromCloud: (options?: { forceFetch?: boolean }) => Promise<{ success: boolean; message: string; staysCount: number }>;
   forceSyncWithCloud: () => Promise<{ success: boolean; message: string; staysCount: number }>;
   markChangesMade: () => void;
   clearSaveFeedback: () => void;
@@ -62,8 +62,8 @@ const LOCAL_AGENDA_KEY = 'stayplan_local_agenda';
 const LOCAL_CHECKLIST_KEY = 'stayplan_local_checklist';
 const LOCAL_ACTIVE_ID_KEY = 'stayplan_local_active_id';
 
-// Read-only offline cache key helper
-const getUserCacheKey = (uid: string, suffix: string) => `stayplan_cache_${uid}_${suffix}`;
+// Lightweight UI preference key (active stay selection only)
+const getUserActivePrefKey = (uid: string) => `stayplan_pref_active_${uid}`;
 
 /**
  * Sanitizes object by removing `undefined` values recursively so Firestore never errors on invalid values.
@@ -105,6 +105,80 @@ function saveLocalData<T>(key: string, data: T) {
   }
 }
 
+// ----------------------------------------------------------------------------------
+// Deep comparison helpers to avoid redundant React state reference replacements
+// ----------------------------------------------------------------------------------
+function areStaysEqual(a: Stay[], b: Stay[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const s1 = a[i];
+    const s2 = b[i];
+    if (
+      s1.id !== s2.id ||
+      s1.updatedAt !== s2.updatedAt ||
+      s1.title !== s2.title ||
+      s1.type !== s2.type ||
+      s1.startDate !== s2.startDate ||
+      s1.endDate !== s2.endDate ||
+      s1.location !== s2.location ||
+      s1.durationDays !== s2.durationDays ||
+      (s1.companions?.length || 0) !== (s2.companions?.length || 0) ||
+      (s1.houseRules?.length || 0) !== (s2.houseRules?.length || 0)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areAgendaListsEqual(a: AgendaItem[], b: AgendaItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const a1 = a[i];
+    const a2 = b[i];
+    if (
+      a1.id !== a2.id ||
+      a1.stayId !== a2.stayId ||
+      a1.updatedAt !== a2.updatedAt ||
+      a1.title !== a2.title ||
+      a1.dayNumber !== a2.dayNumber ||
+      a1.timeSlot !== a2.timeSlot ||
+      a1.timeSpecific !== a2.timeSpecific ||
+      a1.isCompleted !== a2.isCompleted ||
+      a1.priority !== a2.priority ||
+      a1.description !== a2.description ||
+      a1.locationName !== a2.locationName ||
+      a1.personInCharge !== a2.personInCharge ||
+      a1.notes !== a2.notes
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areChecklistListsEqual(a: ChecklistItem[], b: ChecklistItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const c1 = a[i];
+    const c2 = b[i];
+    if (
+      c1.id !== c2.id ||
+      c1.stayId !== c2.stayId ||
+      c1.updatedAt !== c2.updatedAt ||
+      c1.text !== c2.text ||
+      c1.category !== c2.category ||
+      c1.isCompleted !== c2.isCompleted
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, requireAuth } = useAuth();
 
@@ -116,9 +190,14 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoadingStays, setIsLoadingStays] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (navigator.onLine ? 'SAVED' : 'OFFLINE'));
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (navigator.onLine ? 'SYNCED' : 'OFFLINE'));
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Health and realtime listener status references
+  const staysListenerActiveRef = useRef<boolean>(false);
+  const subcollectionsListenerActiveRef = useRef<boolean>(false);
+  const hasPendingWritesRef = useRef<boolean>(false);
 
   // Unsaved changes & feedback
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
@@ -130,7 +209,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Listen to network status (Online / Offline)
   useEffect(() => {
     const handleOnline = () => {
-      setSyncStatus('SAVED');
+      setSyncStatus('SYNCED');
       setSyncError(null);
     };
     const handleOffline = () => {
@@ -148,7 +227,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const markChangesMade = useCallback(() => {
-    // Keep for legacy callers if needed, but in standard flow changes are directly synced
+    // Retained for compatibility
   }, []);
 
   const clearSaveFeedback = useCallback(() => {
@@ -156,87 +235,109 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ----------------------------------------------------------------------------------
-  // 1. REFRESH FROM CLOUD (Authoritative Firestore Read - Replaces Blind Force Sync)
+  // 1. REFRESH FROM CLOUD (Optimized Realtime Health Check & On-Demand Revalidation)
   // ----------------------------------------------------------------------------------
-  const refreshFromCloud = useCallback(async (): Promise<{ success: boolean; message: string; staysCount: number }> => {
-    if (!user || user.uid === 'guest-local-user') {
-      return { success: false, message: 'Sila log masuk dengan Google untuk memuat data.', staysCount: 0 };
-    }
-
-    if (!navigator.onLine) {
-      setSyncStatus('OFFLINE');
-      return { success: false, message: 'Peranti anda sedang di luar talian (Offline).', staysCount: userStays.length };
-    }
-
-    try {
-      setIsSyncing(true);
-      setSyncStatus('SYNCING');
-      setSyncError(null);
-
-      // Fetch all user stays directly from Firestore
-      const staysColRef = collection(db, 'users', user.uid, 'stays');
-      const staysSnap = await getDocs(staysColRef);
-
-      const fetchedStays: Stay[] = [];
-      staysSnap.forEach((docSnap) => {
-        fetchedStays.push(docSnap.data() as Stay);
-      });
-
-      fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setUserStays(fetchedStays);
-      saveLocalData(getUserCacheKey(user.uid, 'stays'), fetchedStays);
-
-      // Determine active stay
-      let currentActive = activeStayId;
-      if (!currentActive || !fetchedStays.some((s) => s.id === currentActive)) {
-        currentActive = fetchedStays.length > 0 ? fetchedStays[0].id : null;
-        setActiveStayIdState(currentActive);
+  const refreshFromCloud = useCallback(
+    async (options?: { forceFetch?: boolean }): Promise<{ success: boolean; message: string; staysCount: number }> => {
+      if (!user || user.uid === 'guest-local-user') {
+        return { success: false, message: 'Sila log masuk dengan Google untuk memuat data.', staysCount: 0 };
       }
 
-      // If active stay exists, fetch its subcollections
-      if (currentActive) {
-        const agendaColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'agendaItems');
-        const checklistColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'checklistItems');
-
-        const [agendaSnap, checklistSnap] = await Promise.all([
-          getDocs(agendaColRef),
-          getDocs(checklistColRef)
-        ]);
-
-        const fetchedAgendas: AgendaItem[] = [];
-        agendaSnap.forEach((d) => fetchedAgendas.push(d.data() as AgendaItem));
-
-        const fetchedChecklists: ChecklistItem[] = [];
-        checklistSnap.forEach((d) => fetchedChecklists.push(d.data() as ChecklistItem));
-
-        setUserAgendaItems(fetchedAgendas);
-        setUserChecklistItems(fetchedChecklists);
-
-        saveLocalData(getUserCacheKey(user.uid, 'agenda'), fetchedAgendas);
-        saveLocalData(getUserCacheKey(user.uid, 'checklist'), fetchedChecklists);
+      if (!navigator.onLine) {
+        setSyncStatus('OFFLINE');
+        return { success: false, message: 'Peranti anda sedang di luar talian (Offline).', staysCount: userStays.length };
       }
 
-      const now = Date.now();
-      setLastSyncTime(now);
-      setSyncStatus('SYNCED');
-      setHasUnsavedChanges(false);
-      setUnsavedCount(0);
+      // Fast-path: When realtime listener is active and no force-poll is requested
+      const isListenerHealthy = staysListenerActiveRef.current && !options?.forceFetch;
+      if (isListenerHealthy && !hasPendingWritesRef.current) {
+        setSyncStatus('SYNCED');
+        setSyncError(null);
+        setLastSyncTime(Date.now());
+        return {
+          success: true,
+          message: `Semua data telah diselaraskan (${userStays.length} stay).`,
+          staysCount: userStays.length
+        };
+      }
 
-      return {
-        success: true,
-        message: `Berjaya memuat semula ${fetchedStays.length} stay.`,
-        staysCount: fetchedStays.length
-      };
-    } catch (err: any) {
-      console.error('Refresh From Cloud Error:', err);
-      const errMsg = err?.message || 'Gagal memuat semula data.';
-      setSyncError(errMsg);
-      setSyncStatus('ERROR');
-      return { success: false, message: errMsg, staysCount: 0 };
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [user, activeStayId, userStays.length]);
+      try {
+        setIsSyncing(true);
+        setSyncStatus('SYNCING');
+        setSyncError(null);
+
+        // Fetch stays collection from Firestore
+        const staysColRef = collection(db, 'users', user.uid, 'stays');
+        const staysSnap = await getDocs(staysColRef);
+
+        const fetchedStays: Stay[] = [];
+        staysSnap.forEach((docSnap) => {
+          fetchedStays.push(docSnap.data() as Stay);
+        });
+
+        fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        setUserStays((prev) => (areStaysEqual(prev, fetchedStays) ? prev : fetchedStays));
+
+        // Determine active stay
+        let currentActive = activeStayId;
+        if (!currentActive || !fetchedStays.some((s) => s.id === currentActive)) {
+          currentActive = fetchedStays.length > 0 ? fetchedStays[0].id : null;
+          setActiveStayIdState(currentActive);
+        }
+
+        // Parallel fetch for active stay's subcollections
+        if (currentActive) {
+          const agendaColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'agendaItems');
+          const checklistColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'checklistItems');
+
+          const [agendaSnap, checklistSnap] = await Promise.all([
+            getDocs(agendaColRef),
+            getDocs(checklistColRef)
+          ]);
+
+          const fetchedAgendas: AgendaItem[] = [];
+          agendaSnap.forEach((d) => fetchedAgendas.push(d.data() as AgendaItem));
+
+          const fetchedChecklists: ChecklistItem[] = [];
+          checklistSnap.forEach((d) => fetchedChecklists.push(d.data() as ChecklistItem));
+
+          setUserAgendaItems((prev) => {
+            const otherStays = prev.filter((i) => i.stayId !== currentActive);
+            const merged = [...otherStays, ...fetchedAgendas];
+            return areAgendaListsEqual(prev, merged) ? prev : merged;
+          });
+
+          setUserChecklistItems((prev) => {
+            const otherStays = prev.filter((i) => i.stayId !== currentActive);
+            const merged = [...otherStays, ...fetchedChecklists];
+            return areChecklistListsEqual(prev, merged) ? prev : merged;
+          });
+        }
+
+        const now = Date.now();
+        setLastSyncTime(now);
+        setSyncStatus('SYNCED');
+        setHasUnsavedChanges(false);
+        setUnsavedCount(0);
+
+        return {
+          success: true,
+          message: `Berjaya memuat semula ${fetchedStays.length} stay.`,
+          staysCount: fetchedStays.length
+        };
+      } catch (err: any) {
+        console.error('Refresh From Cloud Error:', err);
+        const errMsg = err?.message || 'Gagal memuat semula data.';
+        setSyncError(errMsg);
+        setSyncStatus('ERROR');
+        return { success: false, message: errMsg, staysCount: 0 };
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [user, activeStayId, userStays.length]
+  );
 
   // Alias for backward compatibility with existing UI components
   const forceSyncWithCloud = refreshFromCloud;
@@ -272,7 +373,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // ----------------------------------------------------------------------------------
-  // 2. DATA SUBSCRIPTION & HYDRATION (Pure Firestore Authority - No Guest Data Upload)
+  // 2. DATA SUBSCRIPTION & HYDRATION (Authoritative Realtime Listener)
   // ----------------------------------------------------------------------------------
   useEffect(() => {
     if (!user) {
@@ -282,12 +383,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserChecklistItems([]);
       setActiveStayIdState(SHOWCASE_STAYS[0]?.id || null);
       setIsLoadingStays(false);
-      setSyncStatus('SAVED');
+      setSyncStatus('SYNCED');
+      staysListenerActiveRef.current = false;
       return;
     }
 
     if (user.uid === 'guest-local-user') {
-      // Guest local storage mode (STRICTLY ISOLATED TO LOCAL STORAGE)
+      // Guest local storage mode (Strictly isolated to LocalStorage)
       const savedStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
       const savedAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
       const savedChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
@@ -325,24 +427,20 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
       }
       setIsLoadingStays(false);
-      setSyncStatus('SAVED');
+      setSyncStatus('SYNCED');
+      staysListenerActiveRef.current = false;
       return;
     }
 
-    // AUTHENTICATED GOOGLE USER: Read directly from Firestore
+    // AUTHENTICATED GOOGLE USER:
+    // Firestore with persistent local cache will hydrate instantly from IndexedDB,
+    // and seamlessly update over realtime WebSocket / HTTP streaming.
     setIsLoadingStays(true);
-    setSyncStatus('SYNCING');
 
-    // Fast-start from local read cache if available (for instant paint), but Firestore is the authority
-    const cachedStays = loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
-    if (cachedStays.length > 0) {
-      setUserStays(cachedStays);
-      const cachedActive = loadLocalData<string | null>(getUserCacheKey(user.uid, 'active_id'), null);
-      if (cachedActive && cachedStays.some((s) => s.id === cachedActive)) {
-        setActiveStayIdState(cachedActive);
-      } else {
-        setActiveStayIdState(cachedStays[0].id);
-      }
+    // Initial preference for active stay id if available
+    const savedActivePref = localStorage.getItem(getUserActivePrefKey(user.uid));
+    if (savedActivePref) {
+      setActiveStayIdState(savedActivePref);
     }
 
     const staysColRef = collection(db, 'users', user.uid, 'stays');
@@ -351,36 +449,43 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribeStays = onSnapshot(
       staysColRef,
       (snapshot) => {
+        staysListenerActiveRef.current = true;
+        hasPendingWritesRef.current = snapshot.metadata.hasPendingWrites;
+
         const fetchedStays: Stay[] = [];
         snapshot.forEach((docSnap) => {
           fetchedStays.push(docSnap.data() as Stay);
         });
 
         fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setUserStays(fetchedStays);
-        saveLocalData(getUserCacheKey(user.uid, 'stays'), fetchedStays);
+
+        // Diffing check: only set state if stays array actually changed
+        setUserStays((prev) => (areStaysEqual(prev, fetchedStays) ? prev : fetchedStays));
 
         setActiveStayIdState((prevActiveId) => {
           if (fetchedStays.length === 0) {
-            saveLocalData(getUserCacheKey(user.uid, 'active_id'), null);
             return null;
           }
           if (prevActiveId && fetchedStays.some((s) => s.id === prevActiveId)) {
-            saveLocalData(getUserCacheKey(user.uid, 'active_id'), prevActiveId);
             return prevActiveId;
           }
           const nextId = fetchedStays[0].id;
-          saveLocalData(getUserCacheKey(user.uid, 'active_id'), nextId);
+          try {
+            localStorage.setItem(getUserActivePrefKey(user.uid), nextId);
+          } catch {
+            // ignore
+          }
           return nextId;
         });
 
         setIsLoadingStays(false);
-        setSyncStatus('SYNCED');
+        setSyncStatus(navigator.onLine ? 'SYNCED' : 'OFFLINE');
         setLastSyncTime(Date.now());
         setSyncError(null);
       },
       (error) => {
         console.error('Firestore stays subscription error:', error);
+        staysListenerActiveRef.current = false;
         setSyncError(error.message || 'Ralat sambungan Firestore');
         setSyncStatus('ERROR');
         setIsLoadingStays(false);
@@ -388,6 +493,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => {
+      staysListenerActiveRef.current = false;
       unsubscribeStays();
     };
   }, [user]);
@@ -401,6 +507,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserAgendaItems([]);
         setUserChecklistItems([]);
       }
+      subcollectionsListenerActiveRef.current = false;
       return;
     }
 
@@ -410,14 +517,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubAgenda = onSnapshot(
       agendaRef,
       (snapshot) => {
+        subcollectionsListenerActiveRef.current = true;
+        hasPendingWritesRef.current = hasPendingWritesRef.current || snapshot.metadata.hasPendingWrites;
+
         const items: AgendaItem[] = [];
         snapshot.forEach((d) => items.push(d.data() as AgendaItem));
 
         setUserAgendaItems((prev) => {
           const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
           const merged = [...otherStaysItems, ...items];
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), merged);
-          return merged;
+          return areAgendaListsEqual(prev, merged) ? prev : merged;
         });
         setLastSyncTime(Date.now());
       },
@@ -435,8 +544,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserChecklistItems((prev) => {
           const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
           const merged = [...otherStaysItems, ...items];
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), merged);
-          return merged;
+          return areChecklistListsEqual(prev, merged) ? prev : merged;
         });
         setLastSyncTime(Date.now());
       },
@@ -446,6 +554,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => {
+      subcollectionsListenerActiveRef.current = false;
       unsubAgenda();
       unsubChecklist();
     };
@@ -481,12 +590,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setActiveStayId = (id: string) => {
     setActiveStayIdState(id);
     if (user && user.uid !== 'guest-local-user') {
-      saveLocalData(getUserCacheKey(user.uid, 'active_id'), id);
+      try {
+        localStorage.setItem(getUserActivePrefKey(user.uid), id);
+      } catch {
+        // ignore
+      }
     }
   };
 
   // ----------------------------------------------------------------------------------
-  // 4. AWAITED FIRESTORE WRITE MUTATIONS (Server-Authoritative, No Silent Detached Writes)
+  // 4. AWAITED FIRESTORE WRITE MUTATIONS (Server-Authoritative)
   // ----------------------------------------------------------------------------------
 
   const addStay = useCallback(
@@ -558,7 +671,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         await batch.commit();
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -603,7 +716,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const stayRef = doc(db, 'users', user.uid, 'stays', id);
         await updateDoc(stayRef, sanitizedUpdates);
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -656,7 +769,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         await batch.commit();
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -746,7 +859,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         await batch.commit();
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -795,7 +908,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const docRef = doc(colRef, newItemId);
         await setDoc(docRef, sanitizeForFirestore<AgendaItem>(newItem));
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -840,7 +953,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
         await updateDoc(itemRef, sanitizedUpdates);
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -886,7 +999,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         await batch.commit();
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -923,7 +1036,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
         await deleteDoc(itemRef);
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -965,7 +1078,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
         await updateDoc(itemRef, { isCompleted: nextCompleted, updatedAt: now });
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -1014,7 +1127,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const docRef = doc(colRef, newItemId);
         await setDoc(docRef, sanitizeForFirestore<ChecklistItem>(newItem));
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -1058,7 +1171,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
         await updateDoc(itemRef, { isCompleted: nextCompleted, updatedAt: now });
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
@@ -1095,7 +1208,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
         await deleteDoc(itemRef);
 
-        setSyncStatus('SAVED');
+        setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
         setSyncError(null);
       } catch (err: any) {
