@@ -40,13 +40,13 @@ export const StayInfoCard: React.FC<StayInfoCardProps> = ({ stay, onEditStay }) 
           <span className="p-1.5 rounded-lg bg-stone-100 text-stone-700">
             <Home className="w-4 h-4 text-stone-600" />
           </span>
-          <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider">Info Penginapan & Kemudahan</h3>
+          <h3 className="text-xs font-bold text-stone-800 uppercase tracking-wider">Maklumat Stay</h3>
         </div>
         <button
           onClick={onEditStay}
           className="text-xs font-semibold text-amber-700 hover:text-amber-900 hover:underline"
         >
-          Kemaskini Info
+          Edit Maklumat
         </button>
       </div>
 

@@ -28,7 +28,7 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
     exportDataJson,
     isPersonalMode,
     isSyncing,
-    forceSyncWithCloud
+    refreshFromCloud
   } = useStay();
 
   const { isAuthenticated, openAuthModal } = useAuth();
@@ -36,12 +36,12 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleForceSync = async () => {
+  const handleRefreshCloud = async () => {
     if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk menyelaraskan ke Cloud Firestore.');
+      openAuthModal('Log masuk dengan Google untuk sync pelan stay anda.');
       return;
     }
-    const res = await forceSyncWithCloud();
+    const res = await refreshFromCloud();
     setSyncStatusMsg(res.message);
     setTimeout(() => setSyncStatusMsg(null), 5000);
   };
@@ -202,13 +202,13 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
                   <button
                     onClick={() => {
                       if (!isAuthenticated) {
-                        openAuthModal('Log masuk dengan Google untuk menyunting maklumat Stay.');
+                        openAuthModal('Log masuk dengan Google untuk edit maklumat Stay.');
                         return;
                       }
                       onClose();
                       onEditStay(stay);
                     }}
-                    title="Sunting Stay"
+                    title="Edit Stay"
                     className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -290,12 +290,12 @@ export const StaySelectorModal: React.FC<StaySelectorModalProps> = ({
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={handleForceSync}
+              onClick={handleRefreshCloud}
               disabled={isSyncing}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer w-full sm:w-auto"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-white ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Menyimpan...' : 'Simpan'}</span>
+              <span>{isSyncing ? 'Syncing...' : 'Refresh from Cloud'}</span>
             </button>
           </div>
         </div>

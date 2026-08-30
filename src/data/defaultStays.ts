@@ -120,7 +120,7 @@ export const SHOWCASE_AGENDA_ITEMS: AgendaItem[] = [
     stayId: 'showcase-family-getaway',
     dayNumber: 2,
     timeSlot: 'midday',
-    timeSpecific: '12:30 tengahari',
+    timeSpecific: '12:30 tengah hari',
     title: 'Gi Kenduri Ayoh Lie',
     description: 'Hadiri jamuan kenduri kahwin, ucap tahniah dan jumpa sanak-saudara.',
     priority: 'must_do',

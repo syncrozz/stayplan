@@ -251,7 +251,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
             </span>
             <div className="text-xl font-black text-stone-800 mt-0.5 flex items-baseline gap-1.5">
               <span>{backlogCount}</span>
-              <span className="text-xs font-semibold text-stone-500">dalam backlog</span>
+              <span className="text-xs font-semibold text-stone-500">belum dijadualkan</span>
             </div>
           </div>
         </div>
@@ -547,7 +547,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
                       className="text-xs font-semibold bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1.5 text-stone-700"
                     >
                       <option value="morning">🌅 Pagi</option>
-                      <option value="midday">☀️ Tengahari</option>
+                      <option value="midday">☀️ Tengah Hari</option>
                       <option value="afternoon">🌤️ Petang</option>
                       <option value="evening">🌙 Malam</option>
                       <option value="flexible">🍃 Fleksibel</option>
@@ -562,7 +562,7 @@ export const PlanBoard: React.FC<PlanBoardProps> = ({
                       type="button"
                       onClick={() => onEditItem(item)}
                       className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
-                      title="Kemaskini Maklumat Lengkap"
+                      title="Edit Maklumat"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>

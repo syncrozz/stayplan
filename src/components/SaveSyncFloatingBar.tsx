@@ -1,28 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useStay } from '../context/StayContext';
 import { useAuth } from '../context/AuthContext';
-import { Save, Cloud, CheckCircle2, RefreshCw, AlertCircle, Sparkles, X } from 'lucide-react';
+import { CheckCircle2, RefreshCw, AlertCircle, WifiOff, X } from 'lucide-react';
 
 export const SaveSyncFloatingBar: React.FC = () => {
   const {
-    hasUnsavedChanges,
-    unsavedCount,
     isSyncing,
-    lastSyncTime,
+    syncStatus,
+    syncError,
     saveFeedback,
-    saveAndSync,
+    refreshFromCloud,
     clearSaveFeedback
   } = useStay();
-  const { isAuthenticated, isGuest, openAuthModal } = useAuth();
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [localFeedback, setLocalFeedback] = useState<string | null>(null);
-
-  // Reset dismissed state when new changes occur
-  useEffect(() => {
-    if (hasUnsavedChanges) {
-      setIsDismissed(false);
-    }
-  }, [hasUnsavedChanges, unsavedCount]);
+  const { isAuthenticated, isGuest } = useAuth();
 
   // Auto clear feedback after 5 seconds
   useEffect(() => {
@@ -34,24 +24,8 @@ export const SaveSyncFloatingBar: React.FC = () => {
     }
   }, [saveFeedback, clearSaveFeedback]);
 
-  const handleSaveAndSync = async () => {
-    if (!isAuthenticated || isGuest) {
-      openAuthModal('Log masuk dengan Google untuk menyimpan & sync semua data ke Google Account anda.');
-      return;
-    }
-    const res = await saveAndSync('Perubahan berjaya disimpan & di-sync ke Google Account anda!');
-    if (res.success) {
-      setLocalFeedback('Tersimpan & Di-Sync!');
-      setTimeout(() => setLocalFeedback(null), 3000);
-    }
-  };
-
-  const formattedLastSync = lastSyncTime
-    ? new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : null;
-
-  // Render toast feedback if available
-  if (saveFeedback && !hasUnsavedChanges) {
+  // If there's an active save feedback toast
+  if (saveFeedback) {
     return (
       <div
         id="save-sync-toast-feedback"
@@ -71,7 +45,7 @@ export const SaveSyncFloatingBar: React.FC = () => {
           )}
           <div className="flex-1">
             <p className="font-bold text-xs uppercase tracking-wider text-emerald-200">
-              {saveFeedback.type === 'success' ? 'Google Cloud Sync' : 'Ralat Sync'}
+              {saveFeedback.type === 'success' ? 'Sync' : 'Sync Failed'}
             </p>
             <p className="text-xs text-stone-100">{saveFeedback.message}</p>
           </div>
@@ -87,63 +61,57 @@ export const SaveSyncFloatingBar: React.FC = () => {
     );
   }
 
-  // Floating Save Bar when changes exist or manually docked
-  if (hasUnsavedChanges && !isDismissed) {
+  // Active sync/saving floating pill (small, unobtrusive and accurate)
+  if (isAuthenticated && !isGuest && (isSyncing || syncStatus === 'SAVING' || syncStatus === 'SYNCING')) {
     return (
       <div
-        id="unsaved-changes-floating-bar"
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-xl animate-in fade-in slide-in-from-bottom-5 duration-300"
+        id="saving-sync-floating-pill"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 animate-in fade-in slide-in-from-bottom-3 duration-200"
       >
-        <div className="bg-stone-900/95 backdrop-blur-md text-white px-4 py-3 sm:px-5 sm:py-3.5 rounded-2xl shadow-2xl border border-stone-700/80 flex items-center justify-between gap-3">
-          {/* Status info */}
+        <div className="bg-stone-900/90 backdrop-blur-md text-white px-4 py-2 rounded-full shadow-lg border border-stone-700 flex items-center gap-2.5 text-xs font-semibold">
+          <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+          <span>Syncing...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Persistent Error indicator with Retry
+  if (isAuthenticated && !isGuest && syncStatus === 'ERROR' && syncError) {
+    return (
+      <div
+        id="sync-error-floating-bar"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-lg animate-in fade-in slide-in-from-bottom-5 duration-300"
+      >
+        <div className="bg-rose-950/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl border border-rose-800 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-            </span>
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
             <div className="truncate">
-              <p className="text-xs sm:text-sm font-bold text-stone-100 flex items-center gap-1.5 truncate">
-                <span>Ada {unsavedCount} perubahan baru</span>
-              </p>
-              <p className="text-[11px] text-stone-400 hidden sm:block truncate">
-                Tekan Simpan untuk sync data ke Google Account anda
-              </p>
+              <p className="text-xs font-bold text-rose-100">Sync Failed</p>
+              <p className="text-[11px] text-rose-200 truncate">{syncError}</p>
             </div>
           </div>
+          <button
+            onClick={() => refreshFromCloud()}
+            className="px-3 py-1.5 bg-rose-700 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shrink-0 transition-colors cursor-pointer"
+          >
+            Cuba Semula
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-          {/* Action button */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              id="floating-save-sync-btn"
-              onClick={handleSaveAndSync}
-              disabled={isSyncing}
-              className={`inline-flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all shadow-md active:scale-95 cursor-pointer ${
-                isSyncing
-                  ? 'bg-amber-600 text-white cursor-wait opacity-90'
-                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white hover:shadow-amber-500/20'
-              }`}
-            >
-              {isSyncing ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  <span>Sync Google...</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4 text-white" />
-                  <span>Sync</span>
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={() => setIsDismissed(true)}
-              className="p-1.5 text-stone-400 hover:text-stone-200 rounded-lg hover:bg-stone-800 transition-colors"
-              title="Sembunyikan bar ini sementara"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+  // Offline indicator
+  if (syncStatus === 'OFFLINE') {
+    return (
+      <div
+        id="offline-floating-pill"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 animate-in fade-in slide-in-from-bottom-3 duration-200"
+      >
+        <div className="bg-stone-800/90 backdrop-blur-md text-stone-200 px-4 py-2 rounded-full shadow-lg border border-stone-700 flex items-center gap-2 text-xs font-medium">
+          <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+          <span>Offline</span>
         </div>
       </div>
     );

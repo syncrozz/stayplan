@@ -58,7 +58,8 @@ function StayPlanApp() {
     isPersonalMode,
     isLoadingStays,
     isSyncing,
-    forceSyncWithCloud
+    syncStatus,
+    refreshFromCloud
   } = useStay();
 
   const { user, isAuthenticated, isGuest, isLoading: isAuthLoading, openAuthModal } = useAuth();
@@ -336,14 +337,14 @@ function StayPlanApp() {
                 <Smartphone className="w-3.5 h-3.5" />
               </span>
               <span>
-                <strong>Mod Tempatan (Device ini sahaja):</strong> Perubahan anda disimpan pada pelayar ini. Log masuk dengan Google untuk menyelaraskan data ini ke awan supaya boleh dibuka di telefon/laptop lain.
+                <strong>Mod Tetamu:</strong> Data hanya disimpan pada peranti ini sehingga anda log masuk.
               </span>
             </div>
             <button
-              onClick={() => openAuthModal('Log masuk dengan Google untuk sync semua data ke awan & telefon lain.')}
+              onClick={() => openAuthModal('Log masuk dengan Google untuk sync semua data ke akaun anda.')}
               className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg text-[11px] shrink-0 transition-colors cursor-pointer"
             >
-              Sync ke Google Cloud
+              Log Masuk & Sync
             </button>
           </div>
         </div>
@@ -353,25 +354,25 @@ function StayPlanApp() {
             <div className="flex items-center gap-1.5 min-w-0">
               <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span className="truncate">
-                <strong>Cloud Sync Aktif:</strong> Diselaraskan ke akaun <strong>{user?.email}</strong>.
+                <strong>Sync Aktif:</strong> Dihubungkan ke akaun <strong>{user?.email}</strong>.
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={async () => {
-                  const res = await forceSyncWithCloud();
+                  const res = await refreshFromCloud();
                   setSyncFeedback(res.message);
                   setTimeout(() => setSyncFeedback(null), 4000);
                 }}
                 disabled={isSyncing}
                 className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition-all cursor-pointer active:scale-95"
-                title="Paksa sync semua data ke Cloud Firestore sekarang"
+                title="Refresh from Cloud"
               >
                 <RefreshCw className={`w-3 h-3 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Sync...' : '⚡ Paksa Sync (Force Sync)'}</span>
+                <span>{isSyncing ? 'Syncing...' : 'Refresh from Cloud'}</span>
               </button>
               <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                ● Terselaras Masa-Nyata
+                ● {syncStatus === 'SAVING' || syncStatus === 'SYNCING' ? 'Syncing...' : syncStatus === 'ERROR' ? 'Sync Failed' : syncStatus === 'OFFLINE' ? 'Offline' : 'Synced'}
               </span>
             </div>
           </div>

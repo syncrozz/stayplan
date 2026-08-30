@@ -112,7 +112,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               <span className="p-1 rounded-md bg-amber-500 text-white text-xs">📋</span>
               <div>
                 <h3 className="text-xs sm:text-sm font-black text-amber-950">
-                  Belum Dijadualkan ({backlogItems.length} aktiviti dalam pool perancangan)
+                  Belum Dijadualkan ({backlogItems.length})
                 </h3>
                 <p className="text-[11px] text-amber-800">
                   Tarik atau klik &quot;+ Jadualkan&quot; untuk masukkan aktiviti ke dalam Hari {selectedDay === 0 ? 1 : selectedDay}.
@@ -245,7 +245,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                 className="px-2.5 py-1.5 text-xs bg-stone-50 border border-stone-300 rounded-xl text-stone-700 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500"
               >
                 <option value="all">Semua Keutamaan</option>
-                <option value="must_do">Wajib Dicapai</option>
+                <option value="must_do">Wajib</option>
                 <option value="optional">Santai</option>
                 <option value="food">Makan</option>
                 <option value="rest">Rehat</option>
@@ -457,7 +457,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                             type="button"
                             onClick={() => onEditItem(item)}
                             className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-                            title="Sunting aktiviti"
+                            title="Edit aktiviti"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>

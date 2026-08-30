@@ -21,6 +21,8 @@ export type StayType =
 
 export type TimeSlot = 'morning' | 'midday' | 'afternoon' | 'evening' | 'flexible';
 
+export type SyncStatus = 'SAVED' | 'SAVING' | 'SYNCING' | 'SYNCED' | 'ERROR' | 'OFFLINE';
+
 export type ActivityPriority = 'must_do' | 'optional' | 'food' | 'rest' | 'logistics';
 
 export interface AgendaItem {
@@ -37,6 +39,8 @@ export interface AgendaItem {
   personInCharge?: string;
   isCompleted: boolean;
   notes?: string;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export type ChecklistCategory = 'essentials' | 'house_homestay' | 'food_gifts' | 'kids_elderly' | 'custom';
@@ -48,6 +52,8 @@ export interface ChecklistItem {
   category: ChecklistCategory;
   text: string;
   isCompleted: boolean;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export type DayType = 'travel_day' | 'stay_day';

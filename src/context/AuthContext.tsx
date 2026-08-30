@@ -54,7 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mockGuestUser = {
         uid: 'guest-local-user',
         email: 'tetamu@stayplan.my',
-        displayName: 'Pengguna Tetamu (Mod Tempatan)',
+        displayName: 'Pengguna Tetamu',
         photoURL: null,
         isAnonymous: true
       } as unknown as User;
@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserProfile({
         uid: 'guest-local-user',
         email: 'tetamu@stayplan.my',
-        displayName: 'Pengguna Tetamu (Mod Tempatan)',
+        displayName: 'Pengguna Tetamu',
         photoURL: null,
         role: 'USER',
         createdAt: Date.now(),
@@ -176,7 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const mockGuestUser = {
       uid: 'guest-local-user',
       email: 'tetamu@stayplan.my',
-      displayName: 'Pengguna Tetamu (Mod Tempatan)',
+      displayName: 'Pengguna Tetamu',
       photoURL: null,
       isAnonymous: true
     } as unknown as User;
@@ -185,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserProfile({
       uid: 'guest-local-user',
       email: 'tetamu@stayplan.my',
-      displayName: 'Pengguna Tetamu (Mod Tempatan)',
+      displayName: 'Pengguna Tetamu',
       photoURL: null,
       role: 'USER',
       createdAt: Date.now(),

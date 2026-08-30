@@ -277,7 +277,7 @@ export const CreateEditStayModal: React.FC<CreateEditStayModalProps> = ({
         {/* Modal Header */}
         <div>
           <h2 className="text-2xl font-extrabold text-stone-900 tracking-tight">
-            {isEditing ? 'Kemaskini Stay' : 'Rancang Short Stay Baharu'}
+            {isEditing ? 'Edit Stay' : 'Rancang Short Stay Baharu'}
           </h2>
           <p className="text-xs text-stone-500 mt-1">
             Fokuskan perancangan 2–4 hari yang santai, bermakna, dan mudah dikongsi bersama keluarga.

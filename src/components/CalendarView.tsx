@@ -137,7 +137,7 @@ export function CalendarView({
               onClick={onNavigateToPlan}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition-all cursor-pointer"
             >
-              <span>📋 {backlogItems.length} dalam Backlog</span>
+              <span>📋 Belum Dijadualkan ({backlogItems.length})</span>
             </button>
           )}
           <button

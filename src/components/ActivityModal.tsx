@@ -100,10 +100,10 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
         {/* Header */}
         <div>
           <h2 className="text-xl font-bold text-stone-900 tracking-tight">
-            {isEditing ? 'Kemaskini Agenda' : 'Tambah Agenda Stay'}
+            {isEditing ? 'Edit Agenda' : 'Tambah Agenda Stay'}
           </h2>
           <p className="text-xs text-stone-500 mt-0.5">
-            Rancang aktiviti ringkas mengikut waktu (Pagi, Tengahari, Petang, Malam) tanpa terikat jadual jam yang ketat.
+            Rancang aktiviti ringkas mengikut waktu (Pagi, Tengah Hari, Petang, Malam) tanpa terikat jadual jam yang ketat.
           </p>
         </div>
 
@@ -137,7 +137,7 @@ export const ActivityModal: React.FC<ActivityModalProps> = ({
                   onChange={(e) => setDayNumber(Number(e.target.value))}
                   className="px-2.5 py-1 text-xs bg-white border border-stone-300 rounded-lg text-stone-800 font-bold focus:ring-2 focus:ring-amber-500"
                 >
-                  <option value={0}>📋 Belum Dijadualkan (Pool)</option>
+                  <option value={0}>📋 Belum Dijadualkan</option>
                   {Array.from({ length: stay.durationDays || 3 }).map((_, idx) => (
                     <option key={idx + 1} value={idx + 1}>
                       Hari {idx + 1}

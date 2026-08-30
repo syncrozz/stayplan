@@ -400,7 +400,7 @@ export const OrganisePlanModal: React.FC<OrganisePlanModalProps> = ({
                               className="text-[11px] font-semibold bg-stone-50 border border-stone-200 rounded-md px-1.5 py-0.5 text-stone-700 focus:ring-1 focus:ring-amber-500"
                             >
                               <option value="morning">🌅 Pagi</option>
-                              <option value="midday">☀️ Tengahari</option>
+                              <option value="midday">☀️ Tengah Hari</option>
                               <option value="afternoon">🌤️ Petang</option>
                               <option value="evening">🌙 Malam</option>
                               <option value="flexible">🍃 Fleksibel</option>
@@ -442,7 +442,7 @@ export const OrganisePlanModal: React.FC<OrganisePlanModalProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-base">📋</span>
                   <div>
-                    <h4 className="text-xs font-black">Belum Dijadualkan (Backlog)</h4>
+                    <h4 className="text-xs font-black">Belum Dijadualkan</h4>
                     <p className="text-[10px] text-stone-500">Pilihan santai / simpanan</p>
                   </div>
                 </div>

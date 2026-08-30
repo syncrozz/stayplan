@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Stay, AgendaItem, ChecklistItem, StayType } from '../types';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import { Stay, AgendaItem, ChecklistItem, StayType, SyncStatus } from '../types';
 import { SHOWCASE_STAYS, SHOWCASE_AGENDA_ITEMS, SHOWCASE_CHECKLIST_ITEMS } from '../data/defaultStays';
 import { getLocalTodayDate, getLocalDateWithOffset } from '../utils/formatters';
 import { useAuth } from './AuthContext';
@@ -27,15 +27,17 @@ interface StayContextType {
   isPersonalMode: boolean;
   isLoadingStays: boolean;
   isSyncing: boolean;
+  syncStatus: SyncStatus;
   lastSyncTime: number | null;
   syncError: string | null;
   hasUnsavedChanges: boolean;
   unsavedCount: number;
   saveFeedback: { type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null;
   saveAndSync: (customSuccessMsg?: string) => Promise<{ success: boolean; message: string; staysCount: number }>;
+  refreshFromCloud: () => Promise<{ success: boolean; message: string; staysCount: number }>;
+  forceSyncWithCloud: () => Promise<{ success: boolean; message: string; staysCount: number }>;
   markChangesMade: () => void;
   clearSaveFeedback: () => void;
-  forceSyncWithCloud: () => Promise<{ success: boolean; message: string; staysCount: number }>;
   addStay: (stay: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => Promise<string>;
   updateStay: (id: string, updates: Partial<Stay>) => Promise<void>;
   deleteStay: (id: string) => Promise<void>;
@@ -54,13 +56,14 @@ interface StayContextType {
 
 const StayContext = createContext<StayContextType | undefined>(undefined);
 
-// Storage keys
+// Storage keys for Guest-only mode
 const LOCAL_STAYS_KEY = 'stayplan_local_stays';
 const LOCAL_AGENDA_KEY = 'stayplan_local_agenda';
 const LOCAL_CHECKLIST_KEY = 'stayplan_local_checklist';
 const LOCAL_ACTIVE_ID_KEY = 'stayplan_local_active_id';
 
-const getUserCacheKey = (uid: string, suffix: string) => `stayplan_cloud_cache_${uid}_${suffix}`;
+// Read-only offline cache key helper
+const getUserCacheKey = (uid: string, suffix: string) => `stayplan_cache_${uid}_${suffix}`;
 
 /**
  * Sanitizes object by removing `undefined` values recursively so Firestore never errors on invalid values.
@@ -105,244 +108,186 @@ function saveLocalData<T>(key: string, data: T) {
 export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, requireAuth } = useAuth();
 
-  // Initial cached states for ultra-fast zero-latency startup
-  const [userStays, setUserStays] = useState<Stay[]>(() => {
-    if (user && user.uid !== 'guest-local-user') {
-      return loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
-    }
-    return [];
-  });
+  // State management
+  const [userStays, setUserStays] = useState<Stay[]>([]);
+  const [userAgendaItems, setUserAgendaItems] = useState<AgendaItem[]>([]);
+  const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>([]);
+  const [activeStayId, setActiveStayIdState] = useState<string | null>(null);
 
-  const [userAgendaItems, setUserAgendaItems] = useState<AgendaItem[]>(() => {
-    if (user && user.uid !== 'guest-local-user') {
-      return loadLocalData<AgendaItem[]>(getUserCacheKey(user.uid, 'agenda'), []);
-    }
-    return [];
-  });
-
-  const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>(() => {
-    if (user && user.uid !== 'guest-local-user') {
-      return loadLocalData<ChecklistItem[]>(getUserCacheKey(user.uid, 'checklist'), []);
-    }
-    return [];
-  });
-
-  const [activeStayId, setActiveStayIdState] = useState<string | null>(() => {
-    if (user && user.uid !== 'guest-local-user') {
-      const cachedActive = loadLocalData<string | null>(getUserCacheKey(user.uid, 'active_id'), null);
-      if (cachedActive) return cachedActive;
-      const cachedStays = loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
-      return cachedStays.length > 0 ? cachedStays[0].id : null;
-    }
-    return null;
-  });
-
-  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(false);
+  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => Date.now());
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (navigator.onLine ? 'SAVED' : 'OFFLINE'));
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Unsaved changes tracking & Save-to-Google sync status
+  // Unsaved changes & feedback
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [unsavedCount, setUnsavedCount] = useState<number>(0);
   const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null>(null);
 
+  const isPersonalMode = !!user;
+
+  // Listen to network status (Online / Offline)
+  useEffect(() => {
+    const handleOnline = () => {
+      setSyncStatus('SAVED');
+      setSyncError(null);
+    };
+    const handleOffline = () => {
+      setSyncStatus('OFFLINE');
+      setSyncError('Tiada sambungan internet (Mod Luar Talian).');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const markChangesMade = useCallback(() => {
-    setHasUnsavedChanges(true);
-    setUnsavedCount((prev) => prev + 1);
+    // Keep for legacy callers if needed, but in standard flow changes are directly synced
   }, []);
 
   const clearSaveFeedback = useCallback(() => {
     setSaveFeedback(null);
   }, []);
 
-  const isPersonalMode = !!user;
-
-  // Comprehensive Force Cloud Synchronization Method
-  const forceSyncWithCloud = useCallback(async (): Promise<{ success: boolean; message: string; staysCount: number }> => {
+  // ----------------------------------------------------------------------------------
+  // 1. REFRESH FROM CLOUD (Authoritative Firestore Read - Replaces Blind Force Sync)
+  // ----------------------------------------------------------------------------------
+  const refreshFromCloud = useCallback(async (): Promise<{ success: boolean; message: string; staysCount: number }> => {
     if (!user || user.uid === 'guest-local-user') {
-      return { success: false, message: 'Sila log masuk dengan Google untuk menyelaraskan ke Cloud Firestore.', staysCount: 0 };
+      return { success: false, message: 'Sila log masuk dengan Google untuk memuat data.', staysCount: 0 };
+    }
+
+    if (!navigator.onLine) {
+      setSyncStatus('OFFLINE');
+      return { success: false, message: 'Peranti anda sedang di luar talian (Offline).', staysCount: userStays.length };
     }
 
     try {
       setIsSyncing(true);
+      setSyncStatus('SYNCING');
       setSyncError(null);
 
-      // 1. Gather all potential stays from local memory, cache, and guest sessions
-      const existingStateStays = userStays.length > 0 ? userStays : [];
-      const cachedStays = loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
-      const localGuestStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
-      const guestCachedStays = loadLocalData<Stay[]>('stayplan_cloud_cache_guest-local-user_stays', []);
-      const legacyStays = loadLocalData<Stay[]>('stayplan_stays', []);
+      // Fetch all user stays directly from Firestore
+      const staysColRef = collection(db, 'users', user.uid, 'stays');
+      const staysSnap = await getDocs(staysColRef);
 
-      // Merge and deduplicate by stay ID
-      const stayMap = new Map<string, Stay>();
-      [...legacyStays, ...guestCachedStays, ...localGuestStays, ...cachedStays, ...existingStateStays].forEach((s) => {
-        if (s && s.id) {
-          stayMap.set(s.id, { ...s, userId: user.uid });
-        }
+      const fetchedStays: Stay[] = [];
+      staysSnap.forEach((docSnap) => {
+        fetchedStays.push(docSnap.data() as Stay);
       });
 
-      // If absolutely no local stays exist, use showcase template to seed
-      if (stayMap.size === 0) {
-        SHOWCASE_STAYS.forEach((s) => {
-          stayMap.set(s.id, { ...s, userId: user.uid });
-        });
+      fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setUserStays(fetchedStays);
+      saveLocalData(getUserCacheKey(user.uid, 'stays'), fetchedStays);
+
+      // Determine active stay
+      let currentActive = activeStayId;
+      if (!currentActive || !fetchedStays.some((s) => s.id === currentActive)) {
+        currentActive = fetchedStays.length > 0 ? fetchedStays[0].id : null;
+        setActiveStayIdState(currentActive);
       }
 
-      // Gather all agenda items
-      const existingAgendas = userAgendaItems;
-      const cachedAgendas = loadLocalData<AgendaItem[]>(getUserCacheKey(user.uid, 'agenda'), []);
-      const localGuestAgendas = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
-      const guestCachedAgendas = loadLocalData<AgendaItem[]>('stayplan_cloud_cache_guest-local-user_agenda', []);
-      const agendaMap = new Map<string, AgendaItem>();
-      [...guestCachedAgendas, ...localGuestAgendas, ...cachedAgendas, ...existingAgendas].forEach((a) => {
-        if (a && a.id) {
-          agendaMap.set(a.id, { ...a, userId: user.uid });
-        }
-      });
-      if (agendaMap.size === 0) {
-        SHOWCASE_AGENDA_ITEMS.forEach((a) => agendaMap.set(a.id, { ...a, userId: user.uid }));
-      }
+      // If active stay exists, fetch its subcollections
+      if (currentActive) {
+        const agendaColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'agendaItems');
+        const checklistColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'checklistItems');
 
-      // Gather all checklist items
-      const existingChecklists = userChecklistItems;
-      const cachedChecklists = loadLocalData<ChecklistItem[]>(getUserCacheKey(user.uid, 'checklist'), []);
-      const localGuestChecklists = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
-      const guestCachedChecklists = loadLocalData<ChecklistItem[]>('stayplan_cloud_cache_guest-local-user_checklist', []);
-      const checklistMap = new Map<string, ChecklistItem>();
-      [...guestCachedChecklists, ...localGuestChecklists, ...cachedChecklists, ...existingChecklists].forEach((c) => {
-        if (c && c.id) {
-          checklistMap.set(c.id, { ...c, userId: user.uid });
-        }
-      });
-      if (checklistMap.size === 0) {
-        SHOWCASE_CHECKLIST_ITEMS.forEach((c) => checklistMap.set(c.id, { ...c, userId: user.uid }));
-      }
+        const [agendaSnap, checklistSnap] = await Promise.all([
+          getDocs(agendaColRef),
+          getDocs(checklistColRef)
+        ]);
 
-      const staysToPush = Array.from(stayMap.values());
-      const agendasToPush = Array.from(agendaMap.values());
-      const checklistsToPush = Array.from(checklistMap.values());
+        const fetchedAgendas: AgendaItem[] = [];
+        agendaSnap.forEach((d) => fetchedAgendas.push(d.data() as AgendaItem));
 
-      // Save to local cache immediately to guarantee 0 data loss
-      saveLocalData(getUserCacheKey(user.uid, 'stays'), staysToPush);
-      saveLocalData(getUserCacheKey(user.uid, 'agenda'), agendasToPush);
-      saveLocalData(getUserCacheKey(user.uid, 'checklist'), checklistsToPush);
+        const fetchedChecklists: ChecklistItem[] = [];
+        checklistSnap.forEach((d) => fetchedChecklists.push(d.data() as ChecklistItem));
 
-      // 2. Perform write batch to Firestore for all collected items
-      const batch = writeBatch(db);
+        setUserAgendaItems(fetchedAgendas);
+        setUserChecklistItems(fetchedChecklists);
 
-      for (const stay of staysToPush) {
-        const stayRef = doc(db, 'users', user.uid, 'stays', stay.id);
-        batch.set(stayRef, sanitizeForFirestore<Stay>({ ...stay, userId: user.uid, updatedAt: Date.now() }), { merge: true });
-
-        // Push matching agendas
-        const matchingAgendas = agendasToPush.filter((a) => a.stayId === stay.id);
-        for (const ag of matchingAgendas) {
-          const aRef = doc(db, 'users', user.uid, 'stays', stay.id, 'agendaItems', ag.id);
-          batch.set(aRef, sanitizeForFirestore<AgendaItem>({ ...ag, userId: user.uid }), { merge: true });
-        }
-
-        // Push matching checklists
-        const matchingChecklists = checklistsToPush.filter((c) => c.stayId === stay.id);
-        for (const chk of matchingChecklists) {
-          const cRef = doc(db, 'users', user.uid, 'stays', stay.id, 'checklistItems', chk.id);
-          batch.set(cRef, sanitizeForFirestore<ChecklistItem>({ ...chk, userId: user.uid }), { merge: true });
-        }
-      }
-
-      await batch.commit();
-
-      // Update in-memory state directly without redundant costly read loops
-      setUserStays(staysToPush);
-      setUserAgendaItems(agendasToPush);
-      setUserChecklistItems(checklistsToPush);
-
-      if (staysToPush.length > 0) {
-        setActiveStayIdState((prev) => (prev && staysToPush.some((s) => s.id === prev) ? prev : staysToPush[0].id));
+        saveLocalData(getUserCacheKey(user.uid, 'agenda'), fetchedAgendas);
+        saveLocalData(getUserCacheKey(user.uid, 'checklist'), fetchedChecklists);
       }
 
       const now = Date.now();
       setLastSyncTime(now);
+      setSyncStatus('SYNCED');
       setHasUnsavedChanges(false);
       setUnsavedCount(0);
 
       return {
         success: true,
-        message: `Berjaya di-sync ke Google Cloud! (${staysToPush.length} Stay, ${agendasToPush.length} aktiviti, ${checklistsToPush.length} item semakan)`,
-        staysCount: staysToPush.length
+        message: `Berjaya memuat semula ${fetchedStays.length} stay.`,
+        staysCount: fetchedStays.length
       };
     } catch (err: any) {
-      console.error('Force Cloud Sync Error:', err);
-      const rawMsg = err?.message || String(err);
-      const isQuota =
-        rawMsg.toLowerCase().includes('quota') ||
-        rawMsg.toLowerCase().includes('resource-exhausted') ||
-        rawMsg.toLowerCase().includes('resource_exhausted');
-
-      let friendlyMsg = rawMsg;
-      if (isQuota) {
-        friendlyMsg =
-          'Kuota harian Firestore telah tercapai (akan reset automatik esok). Data anda selamat disimpan secara tempatan (Local Storage/Cache) dan tidak hilang.';
-      } else if (rawMsg.includes('permission') || rawMsg.includes('insufficient')) {
-        friendlyMsg = 'Kebenaran capaian ditolak. Sila pastikan anda log masuk dengan akaun Google yang sah.';
-      } else if (rawMsg.includes('offline') || rawMsg.includes('network') || rawMsg.includes('unavailable')) {
-        friendlyMsg = 'Sambungan rangkaian terputus. Data disimpan di storan peranti dan akan disegerakkan semula.';
-      }
-
-      setSyncError(friendlyMsg);
-      return { success: false, message: friendlyMsg, staysCount: 0 };
+      console.error('Refresh From Cloud Error:', err);
+      const errMsg = err?.message || 'Gagal memuat semula data.';
+      setSyncError(errMsg);
+      setSyncStatus('ERROR');
+      return { success: false, message: errMsg, staysCount: 0 };
     } finally {
       setIsSyncing(false);
     }
-  }, [user, userStays, userAgendaItems, userChecklistItems]);
+  }, [user, activeStayId, userStays.length]);
 
-  // One-click Save & Sync to Google Account
+  // Alias for backward compatibility with existing UI components
+  const forceSyncWithCloud = refreshFromCloud;
+
   const saveAndSync = useCallback(
     async (customSuccessMsg?: string): Promise<{ success: boolean; message: string; staysCount: number }> => {
       if (!user || user.uid === 'guest-local-user') {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk menyimpan dan sync semua data ke akaun Google anda.');
+        requireAuth(() => {}, 'Log masuk dengan Google untuk sync semua data ke akaun anda.');
         return {
           success: false,
-          message: 'Sila log masuk dengan Google untuk menyimpan dan sync ke Google Account.',
+          message: 'Sila log masuk dengan Google untuk sync ke akaun anda.',
           staysCount: 0
         };
       }
 
-      const res = await forceSyncWithCloud();
+      const res = await refreshFromCloud();
       if (res.success) {
-        setHasUnsavedChanges(false);
-        setUnsavedCount(0);
         setSaveFeedback({
           type: 'success',
-          message: customSuccessMsg || 'Semua perubahan berjaya disimpan & di-sync ke Akaun Google anda!',
+          message: customSuccessMsg || 'Data telah di-sync ke akaun anda.',
           timestamp: Date.now()
         });
       } else {
         setSaveFeedback({
           type: 'error',
-          message: res.message || 'Gagal menyimpan ke Akaun Google.',
+          message: res.message || 'Sync Failed.',
           timestamp: Date.now()
         });
       }
       return res;
     },
-    [user, forceSyncWithCloud, requireAuth]
+    [user, refreshFromCloud, requireAuth]
   );
 
-  // 1. Subscribe or load stays
+  // ----------------------------------------------------------------------------------
+  // 2. DATA SUBSCRIPTION & HYDRATION (Pure Firestore Authority - No Guest Data Upload)
+  // ----------------------------------------------------------------------------------
   useEffect(() => {
     if (!user) {
+      // Demo / Logged-out showcase view
       setUserStays([]);
       setUserAgendaItems([]);
       setUserChecklistItems([]);
       setActiveStayIdState(SHOWCASE_STAYS[0]?.id || null);
       setIsLoadingStays(false);
+      setSyncStatus('SAVED');
       return;
     }
 
     if (user.uid === 'guest-local-user') {
-      // Guest local storage mode
+      // Guest local storage mode (STRICTLY ISOLATED TO LOCAL STORAGE)
       const savedStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
       const savedAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
       const savedChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
@@ -380,125 +325,38 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
       }
       setIsLoadingStays(false);
+      setSyncStatus('SAVED');
       return;
     }
 
-    // Standard Firebase Authenticated User (Google Account)
-    const cachedStays = loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
-    const cachedActiveId = loadLocalData<string | null>(getUserCacheKey(user.uid, 'active_id'), null);
-    const cachedAgenda = loadLocalData<AgendaItem[]>(getUserCacheKey(user.uid, 'agenda'), []);
-    const cachedChecklist = loadLocalData<ChecklistItem[]>(getUserCacheKey(user.uid, 'checklist'), []);
+    // AUTHENTICATED GOOGLE USER: Read directly from Firestore
+    setIsLoadingStays(true);
+    setSyncStatus('SYNCING');
 
+    // Fast-start from local read cache if available (for instant paint), but Firestore is the authority
+    const cachedStays = loadLocalData<Stay[]>(getUserCacheKey(user.uid, 'stays'), []);
     if (cachedStays.length > 0) {
       setUserStays(cachedStays);
-      if (cachedAgenda.length > 0) setUserAgendaItems(cachedAgenda);
-      if (cachedChecklist.length > 0) setUserChecklistItems(cachedChecklist);
-      setActiveStayIdState(
-        cachedActiveId && cachedStays.some((s) => s.id === cachedActiveId) ? cachedActiveId : cachedStays[0].id
-      );
-      setIsLoadingStays(false);
-    } else {
-      setIsLoadingStays(true);
+      const cachedActive = loadLocalData<string | null>(getUserCacheKey(user.uid, 'active_id'), null);
+      if (cachedActive && cachedStays.some((s) => s.id === cachedActive)) {
+        setActiveStayIdState(cachedActive);
+      } else {
+        setActiveStayIdState(cachedStays[0].id);
+      }
     }
 
-    // Safety timeout so UI never hangs indefinitely
-    const safetyTimeout = setTimeout(() => {
-      setIsLoadingStays(false);
-    }, 2000);
-
-    // Auto-migrate any local guest or showcase data created before login
-    const autoMigrateAndEnsureCloudSeed = async () => {
-      try {
-        const localStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
-        const localAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
-        const localChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
-        const guestCacheStays = loadLocalData<Stay[]>('stayplan_cloud_cache_guest-local-user_stays', []);
-
-        const candidateStays = [...localStays, ...guestCacheStays];
-
-        if (candidateStays.length > 0) {
-          const batch = writeBatch(db);
-          for (const s of candidateStays) {
-            const sanitizedStay = sanitizeForFirestore<Stay>({
-              ...s,
-              userId: user.uid,
-              updatedAt: Date.now()
-            });
-            const stayDocRef = doc(db, 'users', user.uid, 'stays', s.id);
-            batch.set(stayDocRef, sanitizedStay, { merge: true });
-
-            const sAgendas = localAgenda.filter((a) => a.stayId === s.id);
-            for (const a of sAgendas) {
-              const sanitizedAgenda = sanitizeForFirestore<AgendaItem>({
-                ...a,
-                userId: user.uid
-              });
-              const aRef = doc(db, 'users', user.uid, 'stays', s.id, 'agendaItems', a.id);
-              batch.set(aRef, sanitizedAgenda, { merge: true });
-            }
-
-            const sChecklists = localChecklist.filter((c) => c.stayId === s.id);
-            for (const c of sChecklists) {
-              const sanitizedChecklist = sanitizeForFirestore<ChecklistItem>({
-                ...c,
-                userId: user.uid
-              });
-              const cRef = doc(db, 'users', user.uid, 'stays', s.id, 'checklistItems', c.id);
-              batch.set(cRef, sanitizedChecklist, { merge: true });
-            }
-          }
-          await batch.commit();
-
-          localStorage.removeItem(LOCAL_STAYS_KEY);
-          localStorage.removeItem(LOCAL_AGENDA_KEY);
-          localStorage.removeItem(LOCAL_CHECKLIST_KEY);
-          localStorage.removeItem(LOCAL_ACTIVE_ID_KEY);
-        } else {
-          // If Firestore is completely empty on first sign-in, automatically seed default stays into user's Firestore
-          const checkSnap = await getDocs(collection(db, 'users', user.uid, 'stays'));
-          if (checkSnap.empty) {
-            const batch = writeBatch(db);
-            for (const s of SHOWCASE_STAYS) {
-              const stayDocRef = doc(db, 'users', user.uid, 'stays', s.id);
-              batch.set(stayDocRef, sanitizeForFirestore<Stay>({ ...s, userId: user.uid, updatedAt: Date.now() }), { merge: true });
-
-              const sAgendas = SHOWCASE_AGENDA_ITEMS.filter((a) => a.stayId === s.id);
-              for (const a of sAgendas) {
-                const aRef = doc(db, 'users', user.uid, 'stays', s.id, 'agendaItems', a.id);
-                batch.set(aRef, sanitizeForFirestore<AgendaItem>({ ...a, userId: user.uid }), { merge: true });
-              }
-
-              const sChecklists = SHOWCASE_CHECKLIST_ITEMS.filter((c) => c.stayId === s.id);
-              for (const c of sChecklists) {
-                const cRef = doc(db, 'users', user.uid, 'stays', s.id, 'checklistItems', c.id);
-                batch.set(cRef, sanitizeForFirestore<ChecklistItem>({ ...c, userId: user.uid }), { merge: true });
-              }
-            }
-            await batch.commit();
-          }
-        }
-      } catch (migErr) {
-        console.warn('Auto-migration and cloud seed note:', migErr);
-      }
-    };
-
-    autoMigrateAndEnsureCloudSeed();
-
-    // Listen to all stays for current authenticated user
     const staysColRef = collection(db, 'users', user.uid, 'stays');
 
-    const unsubscribe = onSnapshot(
+    // Realtime subscription to the user's stays collection
+    const unsubscribeStays = onSnapshot(
       staysColRef,
       (snapshot) => {
-        clearTimeout(safetyTimeout);
         const fetchedStays: Stay[] = [];
         snapshot.forEach((docSnap) => {
           fetchedStays.push(docSnap.data() as Stay);
         });
 
-        // Sort descending by createdAt (or updatedAt) reliably in-memory
         fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
         setUserStays(fetchedStays);
         saveLocalData(getUserCacheKey(user.uid, 'stays'), fetchedStays);
 
@@ -516,24 +374,27 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return nextId;
         });
 
-        setLastSyncTime(Date.now());
         setIsLoadingStays(false);
+        setSyncStatus('SYNCED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
       },
       (error) => {
-        clearTimeout(safetyTimeout);
-        console.warn('Firestore stays sync note:', error.message || error);
+        console.error('Firestore stays subscription error:', error);
         setSyncError(error.message || 'Ralat sambungan Firestore');
+        setSyncStatus('ERROR');
         setIsLoadingStays(false);
       }
     );
 
     return () => {
-      clearTimeout(safetyTimeout);
-      unsubscribe();
+      unsubscribeStays();
     };
   }, [user]);
 
-  // 2. Subscribe to Agenda & Checklist of the currently active stay (for Firebase User)
+  // ----------------------------------------------------------------------------------
+  // 3. REALTIME SUBSCRIPTION FOR ACTIVE STAY'S SUBCOLLECTIONS (Agenda & Checklist)
+  // ----------------------------------------------------------------------------------
   useEffect(() => {
     if (!user || user.uid === 'guest-local-user' || !activeStayId) {
       if (!user) {
@@ -553,14 +414,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         snapshot.forEach((d) => items.push(d.data() as AgendaItem));
 
         setUserAgendaItems((prev) => {
-          // Keep items from other stays intact so switching stays preserves loaded state
           const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
           const merged = [...otherStaysItems, ...items];
           saveLocalData(getUserCacheKey(user.uid, 'agenda'), merged);
           return merged;
         });
+        setLastSyncTime(Date.now());
       },
-      (err) => console.warn('Agenda items sync note:', err)
+      (err) => {
+        console.warn('Agenda items sync note:', err);
+      }
     );
 
     const unsubChecklist = onSnapshot(
@@ -570,14 +433,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         snapshot.forEach((d) => items.push(d.data() as ChecklistItem));
 
         setUserChecklistItems((prev) => {
-          // Keep items from other stays intact
           const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
           const merged = [...otherStaysItems, ...items];
           saveLocalData(getUserCacheKey(user.uid, 'checklist'), merged);
           return merged;
         });
+        setLastSyncTime(Date.now());
       },
-      (err) => console.warn('Checklist items sync note:', err)
+      (err) => {
+        console.warn('Checklist items sync note:', err);
+      }
     );
 
     return () => {
@@ -586,7 +451,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user, activeStayId]);
 
-  // Determine current active lists based on mode
+  // Active stay data selectors
   const stays = useMemo(() => {
     return isPersonalMode ? userStays : SHOWCASE_STAYS;
   }, [isPersonalMode, userStays]);
@@ -620,7 +485,9 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // --- ACTIONS (Optimistic & Non-blocking with guaranteed Firestore synchronization) ---
+  // ----------------------------------------------------------------------------------
+  // 4. AWAITED FIRESTORE WRITE MUTATIONS (Server-Authoritative, No Silent Detached Writes)
+  // ----------------------------------------------------------------------------------
 
   const addStay = useCallback(
     async (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>): Promise<string> => {
@@ -630,22 +497,23 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const stayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const now = Date.now();
       const newStay: Stay = {
         ...newStayData,
         id: stayId,
         userId: user.uid,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        createdAt: now,
+        updatedAt: now
       };
 
       const starterChecklist: ChecklistItem[] = [
-        { id: `chk_${Date.now()}_1`, stayId, userId: user.uid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false },
-        { id: `chk_${Date.now()}_2`, stayId, userId: user.uid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false },
-        { id: `chk_${Date.now()}_3`, stayId, userId: user.uid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false }
+        { id: `chk_${now}_1`, stayId, userId: user.uid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false, createdAt: now, updatedAt: now },
+        { id: `chk_${now}_2`, stayId, userId: user.uid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false, createdAt: now, updatedAt: now },
+        { id: `chk_${now}_3`, stayId, userId: user.uid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false, createdAt: now, updatedAt: now }
       ];
 
       const starterAgenda: AgendaItem = {
-        id: `agn_${Date.now()}_1`,
+        id: `agn_${now}_1`,
         stayId,
         userId: user.uid,
         dayNumber: 1,
@@ -654,78 +522,57 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         title: 'Ketibaan & Daftar Masuk',
         description: 'Tiba di lokasi, susun barang dan rehat santai.',
         priority: 'must_do',
-        isCompleted: false
+        isCompleted: false,
+        createdAt: now,
+        updatedAt: now
       };
 
-      // 1. Optimistically update local state immediately (0ms UI lag)
-      markChangesMade();
-      setUserStays((prev) => {
-        const next = [newStay, ...prev];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_STAYS_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'stays'), next);
-        }
-        return next;
-      });
-
-      setUserChecklistItems((prev) => {
-        const next = [...prev, ...starterChecklist];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_CHECKLIST_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), next);
-        }
-        return next;
-      });
-
-      setUserAgendaItems((prev) => {
-        const next = [...prev, starterAgenda];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
-
+      // Optimistic state update
+      setUserStays((prev) => [newStay, ...prev]);
+      setUserChecklistItems((prev) => [...prev, ...starterChecklist]);
+      setUserAgendaItems((prev) => [...prev, starterAgenda]);
       setActiveStayIdState(stayId);
 
       if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_STAYS_KEY, [newStay, ...userStays]);
         saveLocalData(LOCAL_ACTIVE_ID_KEY, stayId);
         return stayId;
       }
 
-      saveLocalData(getUserCacheKey(user.uid, 'active_id'), stayId);
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
 
-      // 2. Dispatch to Firestore with sanitization so it is 100% saved across all devices
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const sanitizedStay = sanitizeForFirestore<Stay>(newStay);
-          const stayDoc = doc(db, 'users', user.uid, 'stays', stayId);
-          await setDoc(stayDoc, sanitizedStay);
+        const stayDocRef = doc(db, 'users', user.uid, 'stays', stayId);
+        const batch = writeBatch(db);
 
-          const batch = writeBatch(db);
-          starterChecklist.forEach((item) => {
-            const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'), item.id);
-            batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
-          });
+        batch.set(stayDocRef, sanitizeForFirestore<Stay>(newStay));
 
-          const day1Ref = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'), starterAgenda.id);
-          batch.set(day1Ref, sanitizeForFirestore<AgendaItem>(starterAgenda));
+        starterChecklist.forEach((item) => {
+          const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'), item.id);
+          batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
+        });
 
-          await batch.commit();
-        } catch (err) {
-          console.error('Firestore addStay sync error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+        const agendaRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'), starterAgenda.id);
+        batch.set(agendaRef, sanitizeForFirestore<AgendaItem>(starterAgenda));
+
+        await batch.commit();
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore addStay error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal menyimpan Stay ke Cloud Firestore.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
 
       return stayId;
     },
-    [user, requireAuth]
+    [user, userStays, requireAuth]
   );
 
   const updateStay = useCallback(
@@ -735,38 +582,40 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
-      // Optimistic update
-      setUserStays((prev) => {
-        const next = prev.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: Date.now() } : s));
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_STAYS_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'stays'), next);
-        }
-        return next;
+      const now = Date.now();
+      const sanitizedUpdates = sanitizeForFirestore<Partial<Stay>>({
+        ...updates,
+        updatedAt: now
       });
 
-      if (user.uid === 'guest-local-user') return;
+      // Optimistic UI update
+      setUserStays((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: now } : s)));
 
-      // Async Firestore write
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const stayRef = doc(db, 'users', user.uid, 'stays', id);
-          const sanitizedUpdates = sanitizeForFirestore<Partial<Stay>>({
-            ...updates,
-            updatedAt: Date.now()
-          });
-          await updateDoc(stayRef, sanitizedUpdates);
-        } catch (err) {
-          console.error('Firestore updateStay sync error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_STAYS_KEY, userStays.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: now } : s)));
+        return;
+      }
+
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const stayRef = doc(db, 'users', user.uid, 'stays', id);
+        await updateDoc(stayRef, sanitizedUpdates);
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore updateStay error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal mengemas kini Stay di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, requireAuth, markChangesMade]
+    [user, userStays, requireAuth]
   );
 
   const deleteStay = useCallback(
@@ -776,64 +625,50 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
-      // Optimistic instant state update
+      // Optimistic UI removal
       setUserStays((prev) => {
         const next = prev.filter((s) => s.id !== id);
         const nextActive = next.length > 0 ? next[0].id : null;
         setActiveStayIdState(nextActive);
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_STAYS_KEY, next);
-          saveLocalData(LOCAL_ACTIVE_ID_KEY, nextActive);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'stays'), next);
-          saveLocalData(getUserCacheKey(user.uid, 'active_id'), nextActive);
-        }
         return next;
       });
+      setUserAgendaItems((prev) => prev.filter((a) => a.stayId !== id));
+      setUserChecklistItems((prev) => prev.filter((c) => c.stayId !== id));
 
-      setUserAgendaItems((prev) => {
-        const next = prev.filter((a) => a.stayId !== id);
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
+      if (user.uid === 'guest-local-user') {
+        const nextStays = userStays.filter((s) => s.id !== id);
+        saveLocalData(LOCAL_STAYS_KEY, nextStays);
+        saveLocalData(LOCAL_ACTIVE_ID_KEY, nextStays[0]?.id || null);
+        return;
+      }
 
-      setUserChecklistItems((prev) => {
-        const next = prev.filter((c) => c.stayId !== id);
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_CHECKLIST_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), next);
-        }
-        return next;
-      });
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
 
-      if (user.uid === 'guest-local-user') return;
+        const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
+        const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
 
-      // Async Firestore deletion in background
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
-          const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
+        const batch = writeBatch(db);
+        agendaSnap.forEach((d) => batch.delete(d.ref));
+        checklistSnap.forEach((d) => batch.delete(d.ref));
+        batch.delete(doc(db, 'users', user.uid, 'stays', id));
 
-          const batch = writeBatch(db);
-          agendaSnap.forEach((d) => batch.delete(d.ref));
-          checklistSnap.forEach((d) => batch.delete(d.ref));
-          batch.delete(doc(db, 'users', user.uid, 'stays', id));
-          await batch.commit();
-        } catch (err) {
-          console.error('Firestore deleteStay sync error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+        await batch.commit();
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore deleteStay error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal memadam Stay di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, requireAuth, markChangesMade]
+    [user, userStays, requireAuth]
   );
 
   const duplicateStay = useCallback(
@@ -846,100 +681,84 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const target = userStays.find((s) => s.id === id);
       if (!target) return;
 
-      markChangesMade();
       const newStayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const now = Date.now();
       const duplicatedStay: Stay = {
         ...target,
         id: newStayId,
         userId: user.uid,
         title: `${target.title} (Salinan)`,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        createdAt: now,
+        updatedAt: now
       };
 
       const sourceAgendas = userAgendaItems.filter((a) => a.stayId === id);
       const dupAgendas: AgendaItem[] = sourceAgendas.map((a, i) => ({
         ...a,
-        id: `agn_${Date.now()}_${i}`,
+        id: `agn_${now}_${i}`,
         stayId: newStayId,
         userId: user.uid,
-        isCompleted: false
+        isCompleted: false,
+        createdAt: now,
+        updatedAt: now
       }));
 
       const sourceChecklists = userChecklistItems.filter((c) => c.stayId === id);
       const dupChecklists: ChecklistItem[] = sourceChecklists.map((c, i) => ({
         ...c,
-        id: `chk_${Date.now()}_${i}`,
+        id: `chk_${now}_${i}`,
         stayId: newStayId,
         userId: user.uid,
-        isCompleted: false
+        isCompleted: false,
+        createdAt: now,
+        updatedAt: now
       }));
 
-      // Optimistic UI updates
-      setUserStays((prev) => {
-        const next = [duplicatedStay, ...prev];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_STAYS_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'stays'), next);
-        }
-        return next;
-      });
-
-      setUserAgendaItems((prev) => {
-        const next = [...prev, ...dupAgendas];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
-
-      setUserChecklistItems((prev) => {
-        const next = [...prev, ...dupChecklists];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_CHECKLIST_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), next);
-        }
-        return next;
-      });
-
+      // Optimistic updates
+      setUserStays((prev) => [duplicatedStay, ...prev]);
+      setUserAgendaItems((prev) => [...prev, ...dupAgendas]);
+      setUserChecklistItems((prev) => [...prev, ...dupChecklists]);
       setActiveStayIdState(newStayId);
+
       if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_STAYS_KEY, [duplicatedStay, ...userStays]);
         saveLocalData(LOCAL_ACTIVE_ID_KEY, newStayId);
         return;
       }
-      saveLocalData(getUserCacheKey(user.uid, 'active_id'), newStayId);
 
-      // Async Firestore write in background
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const batch = writeBatch(db);
-          const stayRef = doc(db, 'users', user.uid, 'stays', newStayId);
-          batch.set(stayRef, sanitizeForFirestore<Stay>(duplicatedStay));
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
 
-          dupAgendas.forEach((item) => {
-            const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'agendaItems'), item.id);
-            batch.set(itemRef, sanitizeForFirestore<AgendaItem>(item));
-          });
+        const batch = writeBatch(db);
+        const stayRef = doc(db, 'users', user.uid, 'stays', newStayId);
+        batch.set(stayRef, sanitizeForFirestore<Stay>(duplicatedStay));
 
-          dupChecklists.forEach((item) => {
-            const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'checklistItems'), item.id);
-            batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
-          });
+        dupAgendas.forEach((item) => {
+          const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'agendaItems'), item.id);
+          batch.set(itemRef, sanitizeForFirestore<AgendaItem>(item));
+        });
 
-          await batch.commit();
-        } catch (err) {
-          console.error('Firestore duplicateStay sync error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+        dupChecklists.forEach((item) => {
+          const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'checklistItems'), item.id);
+          batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
+        });
+
+        await batch.commit();
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore duplicateStay error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal menduplikasi Stay di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, userStays, userAgendaItems, userChecklistItems, requireAuth, markChangesMade]
+    [user, userStays, userAgendaItems, userChecklistItems, requireAuth]
   );
 
   const addAgendaItem = useCallback(
@@ -949,47 +768,48 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
-      markChangesMade();
       const newItemId = `agn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const now = Date.now();
       const newItem: AgendaItem = {
         ...item,
         id: newItemId,
         stayId: activeStay.id,
-        userId: user.uid
+        userId: user.uid,
+        createdAt: now,
+        updatedAt: now
       };
 
-      // 1. Optimistically update local state immediately (0ms UI lag)
-      setUserAgendaItems((prev) => {
-        const next = [...prev, newItem];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
+      // Optimistic update
+      setUserAgendaItems((prev) => [...prev, newItem]);
 
       if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_AGENDA_KEY, [...userAgendaItems, newItem]);
         return newItemId;
       }
 
-      // 2. Dispatch Firestore write in background with sanitization
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
-          const docRef = doc(colRef, newItemId);
-          await setDoc(docRef, sanitizeForFirestore<AgendaItem>(newItem));
-        } catch (err) {
-          console.error('Firestore addAgendaItem error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
+        const docRef = doc(colRef, newItemId);
+        await setDoc(docRef, sanitizeForFirestore<AgendaItem>(newItem));
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore addAgendaItem error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal menambah aktiviti ke Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
 
       return newItemId;
     },
-    [user, activeStay, requireAuth, markChangesMade]
+    [user, activeStay, userAgendaItems, requireAuth]
   );
 
   const updateAgendaItem = useCallback(
@@ -999,75 +819,86 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
-      // Optimistic update
-      setUserAgendaItems((prev) => {
-        const next = prev.map((a) => (a.id === id ? { ...a, ...updates } : a));
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
+      const now = Date.now();
+      const sanitizedUpdates = sanitizeForFirestore<Partial<AgendaItem>>({
+        ...updates,
+        updatedAt: now
       });
 
-      if (user.uid === 'guest-local-user') return;
+      // Optimistic update
+      setUserAgendaItems((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: now } : a)));
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
-          await updateDoc(itemRef, sanitizeForFirestore<Partial<AgendaItem>>(updates));
-        } catch (err) {
-          console.error('Firestore updateAgendaItem error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: now } : a)));
+        return;
+      }
+
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+        await updateDoc(itemRef, sanitizedUpdates);
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore updateAgendaItem error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal mengemas kini aktiviti di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, activeStay, requireAuth, markChangesMade]
+    [user, activeStay, userAgendaItems, requireAuth]
   );
 
   const batchUpdateAgendaItems = useCallback(
     async (updatesList: Array<{ id: string; updates: Partial<AgendaItem> }>) => {
       if (!user || !activeStay || updatesList.length === 0) return;
 
-      markChangesMade();
+      const now = Date.now();
       const updateMap = new Map(updatesList.map((u) => [u.id, u.updates]));
 
       // Optimistic update
-      setUserAgendaItems((prev) => {
-        const next = prev.map((a) => {
+      setUserAgendaItems((prev) =>
+        prev.map((a) => {
           const up = updateMap.get(a.id);
-          return up ? { ...a, ...up } : a;
-        });
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
+          return up ? { ...a, ...up, updatedAt: now } : a;
+        })
+      );
 
-      if (user.uid === 'guest-local-user') return;
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems);
+        return;
+      }
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const batch = writeBatch(db);
-          for (const item of updatesList) {
-            const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', item.id);
-            batch.update(itemRef, sanitizeForFirestore<Partial<AgendaItem>>(item.updates));
-          }
-          await batch.commit();
-        } catch (err) {
-          console.error('Firestore batchUpdateAgendaItems error:', err);
-        } finally {
-          setIsSyncing(false);
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const batch = writeBatch(db);
+        for (const item of updatesList) {
+          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', item.id);
+          batch.update(itemRef, sanitizeForFirestore<Partial<AgendaItem>>({ ...item.updates, updatedAt: now }));
         }
-      })();
+        await batch.commit();
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore batchUpdateAgendaItems error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal mengemas kini susunan aktiviti di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, activeStay, markChangesMade]
+    [user, activeStay, userAgendaItems]
   );
 
   const deleteAgendaItem = useCallback(
@@ -1077,33 +908,34 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
-      // Optimistic update
-      setUserAgendaItems((prev) => {
-        const next = prev.filter((a) => a.id !== id);
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
+      // Optimistic removal
+      setUserAgendaItems((prev) => prev.filter((a) => a.id !== id));
 
-      if (user.uid === 'guest-local-user') return;
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems.filter((a) => a.id !== id));
+        return;
+      }
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
-          await deleteDoc(itemRef);
-        } catch (err) {
-          console.error('Firestore deleteAgendaItem error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+        await deleteDoc(itemRef);
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore deleteAgendaItem error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal memadam aktiviti di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, activeStay, requireAuth, markChangesMade]
+    [user, activeStay, userAgendaItems, requireAuth]
   );
 
   const toggleAgendaComplete = useCallback(
@@ -1113,37 +945,39 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
       const existing = userAgendaItems.find((i) => i.id === id);
       if (!existing) return;
       const nextCompleted = !existing.isCompleted;
+      const now = Date.now();
 
       // Optimistic update
-      setUserAgendaItems((prev) => {
-        const next = prev.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted } : a));
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_AGENDA_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'agenda'), next);
-        }
-        return next;
-      });
+      setUserAgendaItems((prev) => prev.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted, updatedAt: now } : a)));
 
-      if (user.uid === 'guest-local-user') return;
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted, updatedAt: now } : a)));
+        return;
+      }
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
-          await updateDoc(itemRef, { isCompleted: nextCompleted });
-        } catch (err) {
-          console.error('Firestore toggleAgendaComplete error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+        await updateDoc(itemRef, { isCompleted: nextCompleted, updatedAt: now });
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore toggleAgendaComplete error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal menanda aktiviti di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, activeStay, userAgendaItems, requireAuth, markChangesMade]
+    [user, activeStay, userAgendaItems, requireAuth]
   );
 
   const addChecklistItem = useCallback(
@@ -1153,44 +987,48 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return '';
       }
 
-      markChangesMade();
       const newItemId = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const now = Date.now();
       const newItem: ChecklistItem = {
         ...item,
         id: newItemId,
         stayId: activeStay.id,
-        userId: user.uid
+        userId: user.uid,
+        createdAt: now,
+        updatedAt: now
       };
 
       // Optimistic update
-      setUserChecklistItems((prev) => {
-        const next = [...prev, newItem];
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_CHECKLIST_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), next);
-        }
-        return next;
-      });
+      setUserChecklistItems((prev) => [...prev, newItem]);
 
-      if (user.uid === 'guest-local-user') return newItemId;
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_CHECKLIST_KEY, [...userChecklistItems, newItem]);
+        return newItemId;
+      }
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
-          const docRef = doc(colRef, newItemId);
-          await setDoc(docRef, sanitizeForFirestore<ChecklistItem>(newItem));
-        } catch (err) {
-          console.error('Firestore addChecklistItem error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
+        const docRef = doc(colRef, newItemId);
+        await setDoc(docRef, sanitizeForFirestore<ChecklistItem>(newItem));
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore addChecklistItem error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal menambah item senarai semak ke Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
 
       return newItemId;
     },
-    [user, activeStay, requireAuth, markChangesMade]
+    [user, activeStay, userChecklistItems, requireAuth]
   );
 
   const toggleChecklistComplete = useCallback(
@@ -1200,37 +1038,39 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
       const existing = userChecklistItems.find((i) => i.id === id);
       if (!existing) return;
       const nextCompleted = !existing.isCompleted;
+      const now = Date.now();
 
       // Optimistic update
-      setUserChecklistItems((prev) => {
-        const next = prev.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted } : c));
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_CHECKLIST_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), next);
-        }
-        return next;
-      });
+      setUserChecklistItems((prev) => prev.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted, updatedAt: now } : c)));
 
-      if (user.uid === 'guest-local-user') return;
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_CHECKLIST_KEY, userChecklistItems.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted, updatedAt: now } : c)));
+        return;
+      }
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
-          await updateDoc(itemRef, { isCompleted: nextCompleted });
-        } catch (err) {
-          console.error('Firestore toggleChecklistComplete error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
+        await updateDoc(itemRef, { isCompleted: nextCompleted, updatedAt: now });
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore toggleChecklistComplete error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal mengemas kini item senarai semak di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, activeStay, userChecklistItems, requireAuth, markChangesMade]
+    [user, activeStay, userChecklistItems, requireAuth]
   );
 
   const deleteChecklistItem = useCallback(
@@ -1240,33 +1080,34 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      markChangesMade();
-      // Optimistic update
-      setUserChecklistItems((prev) => {
-        const next = prev.filter((c) => c.id !== id);
-        if (user.uid === 'guest-local-user') {
-          saveLocalData(LOCAL_CHECKLIST_KEY, next);
-        } else {
-          saveLocalData(getUserCacheKey(user.uid, 'checklist'), next);
-        }
-        return next;
-      });
+      // Optimistic removal
+      setUserChecklistItems((prev) => prev.filter((c) => c.id !== id));
 
-      if (user.uid === 'guest-local-user') return;
+      if (user.uid === 'guest-local-user') {
+        saveLocalData(LOCAL_CHECKLIST_KEY, userChecklistItems.filter((c) => c.id !== id));
+        return;
+      }
 
-      (async () => {
-        try {
-          setIsSyncing(true);
-          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
-          await deleteDoc(itemRef);
-        } catch (err) {
-          console.error('Firestore deleteChecklistItem error:', err);
-        } finally {
-          setIsSyncing(false);
-        }
-      })();
+      try {
+        setSyncStatus('SAVING');
+        setIsSyncing(true);
+
+        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
+        await deleteDoc(itemRef);
+
+        setSyncStatus('SAVED');
+        setLastSyncTime(Date.now());
+        setSyncError(null);
+      } catch (err: any) {
+        console.error('Firestore deleteChecklistItem error:', err);
+        setSyncStatus('ERROR');
+        setSyncError(err.message || 'Gagal memadam item senarai semak di Cloud.');
+        throw err;
+      } finally {
+        setIsSyncing(false);
+      }
     },
-    [user, activeStay, requireAuth, markChangesMade]
+    [user, activeStay, userChecklistItems, requireAuth]
   );
 
   const createFromStarterTemplate = useCallback(
@@ -1339,15 +1180,17 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isPersonalMode,
         isLoadingStays,
         isSyncing,
+        syncStatus,
         lastSyncTime,
         syncError,
         hasUnsavedChanges,
         unsavedCount,
         saveFeedback,
         saveAndSync,
+        refreshFromCloud,
+        forceSyncWithCloud,
         markChangesMade,
         clearSaveFeedback,
-        forceSyncWithCloud,
         addStay,
         updateStay,
         deleteStay,
@@ -1376,4 +1219,3 @@ export const useStay = () => {
   }
   return context;
 };
-

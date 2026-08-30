@@ -42,7 +42,7 @@ export const ShowcaseIntroHero: React.FC<ShowcaseIntroHeroProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100/80 text-amber-900 border border-amber-300/80 text-xs font-black tracking-wide">
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>✨ DEMO INTERAKTIF / SHOWCASE</span>
+              <span>✨ DEMO INTERAKTIF</span>
             </span>
             <span className="text-xs text-stone-500 font-medium">
               Eksplorasi contoh sebelum mula merancang
@@ -51,7 +51,7 @@ export const ShowcaseIntroHero: React.FC<ShowcaseIntroHeroProps> = ({
 
           <div className="space-y-1.5">
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-stone-900 tracking-tight font-sans">
-              “Plan the stay, it&apos;s better then didn&apos;t”
+              “Plan the stay, Don&apos;t miss something.”
             </h1>
             <p className="text-sm sm:text-base text-stone-600 leading-relaxed font-normal">
               Platform perancangan agenda ringkas untuk short stay 2–4 hari. Senaraikan apa yang ingin dilakukan, susun mengikut hari, dan lihat keseluruhan stay dalam Calendar.

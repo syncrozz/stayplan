@@ -35,7 +35,8 @@ export const Header: React.FC<HeaderProps> = ({
     activeStay,
     isPersonalMode,
     isSyncing,
-    forceSyncWithCloud,
+    syncStatus,
+    refreshFromCloud,
     lastSyncTime,
     hasUnsavedChanges,
     unsavedCount,
@@ -48,12 +49,12 @@ export const Header: React.FC<HeaderProps> = ({
 
   const stayTypeMeta = activeStay ? STAY_TYPES[activeStay.type] || STAY_TYPES.custom : null;
 
-  const handleManualSync = async () => {
+  const handleManualRefresh = async () => {
     if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk menyelaraskan & menyimpan ke akaun Google anda.');
+      openAuthModal('Log masuk dengan Google untuk sync pelan stay anda.');
       return;
     }
-    const res = await saveAndSync('Berjaya disimpan & di-sync ke akaun Google!');
+    const res = await refreshFromCloud();
     setSyncFeedback(res.message);
     setTimeout(() => {
       setSyncFeedback(null);
@@ -99,26 +100,38 @@ export const Header: React.FC<HeaderProps> = ({
                 </h1>
                 {isAuthenticated && !isGuest ? (
                   <button
-                    onClick={handleManualSync}
+                    onClick={handleManualRefresh}
                     disabled={isSyncing}
                     className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold tracking-tight rounded-lg border transition-all cursor-pointer shadow-2xs active:scale-95 ${
-                      isSyncing
+                      syncStatus === 'ERROR'
+                        ? 'bg-rose-50 text-rose-800 border-rose-300'
+                        : syncStatus === 'OFFLINE'
+                        ? 'bg-stone-100 text-stone-700 border-stone-300'
+                        : isSyncing || syncStatus === 'SAVING' || syncStatus === 'SYNCING'
                         ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
                         : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
                     }`}
-                    title="Klik untuk paksa sync semua data ke Google Cloud Firestore"
+                    title="Status Sync"
                   >
                     <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-600'}`} />
-                    <span>{isSyncing ? 'Sync...' : '⚡ Sync Google'}</span>
+                    <span>
+                      {syncStatus === 'SAVING' || isSyncing || syncStatus === 'SYNCING'
+                        ? 'Syncing...'
+                        : syncStatus === 'OFFLINE'
+                        ? 'Offline'
+                        : syncStatus === 'ERROR'
+                        ? 'Sync Failed'
+                        : 'Synced'}
+                    </span>
                   </button>
                 ) : isGuest ? (
                   <span
                     onClick={() => openAuthModal('Log masuk dengan Google untuk sync pelan ini ke semua peranti anda secara automatik.')}
                     className="cursor-pointer hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition-colors"
-                    title="Mod Tempatan (Device ini sahaja). Klik untuk Log Masuk & Sync ke Google Account."
+                    title="Mod Tetamu. Data hanya disimpan pada peranti ini sehingga anda log masuk."
                   >
                     <Smartphone className="w-2.5 h-2.5 text-amber-600" />
-                    <span>Mod Tempatan</span>
+                    <span>Mod Tetamu</span>
                   </span>
                 ) : (
                   <span
@@ -162,34 +175,38 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Buttons & Auth Gate */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Explicit Sync Button */}
-            <button
-              id="header-save-sync-btn"
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer ${
-                hasUnsavedChanges
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-400/50 animate-pulse'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              }`}
-              title="Sync semua perubahan ke akaun Google"
-            >
-              {isSyncing ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3.5 h-3.5" />
-              )}
-              <span className="hidden sm:inline">
-                {isSyncing
-                  ? 'Syncing...'
-                  : hasUnsavedChanges
-                  ? `Sync (${unsavedCount})`
-                  : 'Sync'}
-              </span>
-              <span className="sm:hidden">
-                {isSyncing ? '...' : hasUnsavedChanges ? `🔄 ${unsavedCount}` : 'Sync'}
-              </span>
-            </button>
+            {/* Explicit Refresh Cloud Button */}
+            {isAuthenticated && !isGuest && (
+              <button
+                id="header-save-sync-btn"
+                onClick={handleManualRefresh}
+                disabled={isSyncing}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer ${
+                  syncStatus === 'ERROR'
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                    : syncStatus === 'OFFLINE'
+                    ? 'bg-stone-500 text-white cursor-not-allowed'
+                    : isSyncing || syncStatus === 'SAVING' || syncStatus === 'SYNCING'
+                    ? 'bg-amber-500 hover:bg-amber-600 text-white animate-pulse'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+                title="Refresh from Cloud"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing || syncStatus === 'SAVING' || syncStatus === 'SYNCING' ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">
+                  {syncStatus === 'SAVING' || isSyncing || syncStatus === 'SYNCING'
+                    ? 'Syncing...'
+                    : syncStatus === 'OFFLINE'
+                    ? 'Offline'
+                    : syncStatus === 'ERROR'
+                    ? 'Sync Failed'
+                    : 'Refresh from Cloud'}
+                </span>
+                <span className="sm:hidden">
+                  {isSyncing ? 'Syncing...' : 'Refresh'}
+                </span>
+              </button>
+            )}
 
             {/* All Stays Button */}
             <button
@@ -275,12 +292,12 @@ export const Header: React.FC<HeaderProps> = ({
                       <button
                         onClick={() => {
                           setIsUserMenuOpen(false);
-                          handleManualSync();
+                          handleManualRefresh();
                         }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors text-left"
                       >
                         <RefreshCw className={`w-4 h-4 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span>Paksa Sync Google Cloud</span>
+                        <span>Refresh from Cloud</span>
                       </button>
 
                       <button
@@ -333,8 +350,8 @@ export const Header: React.FC<HeaderProps> = ({
                     d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                   />
                 </svg>
-                <span className="hidden sm:inline">Login</span>
-                <span className="sm:hidden">Login</span>
+                <span className="hidden sm:inline">Log Masuk</span>
+                <span className="sm:hidden">Log Masuk</span>
               </button>
             )}
           </div>

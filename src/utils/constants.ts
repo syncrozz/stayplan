@@ -68,8 +68,8 @@ export const PRIORITY_CONFIG: Record<ActivityPriority, {
   description: string;
 }> = {
   must_do: {
-    label: 'Wajib Dicapai',
-    shortLabel: 'Wajib Dicapai',
+    label: 'Wajib',
+    shortLabel: 'Wajib',
     badgeClass: 'bg-amber-100 text-amber-900 border-amber-300 font-semibold',
     borderClass: 'border-l-4 border-l-amber-500',
     bgLight: 'bg-amber-50/70',
@@ -121,7 +121,7 @@ export const TIME_SLOTS: Record<TimeSlot, { label: string; icon: string; bgBadge
     bgBadge: 'bg-amber-100/80 text-amber-900 border-amber-200'
   },
   midday: {
-    label: 'Tengahari',
+    label: 'Tengah Hari',
     icon: '☀️',
     bgBadge: 'bg-yellow-100/80 text-yellow-950 border-yellow-200'
   },
