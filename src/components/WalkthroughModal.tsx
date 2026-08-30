@@ -205,29 +205,16 @@ export const WalkthroughModal: React.FC<WalkthroughModalProps> = ({
             }}
             className="w-full sm:w-auto px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
           >
-            <span>✨ Cuba Contoh Sekarang</span>
+            <span>✨ Lihat Contoh</span>
           </button>
 
-          {!isAuthenticated ? (
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda di ruang peribadi.');
-              }}
-              className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-xl shadow-xs transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
-            >
-              <span>🔐 Mula Rancang Dengan Google</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
-            >
-              Faham, Teruskan Merancang
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer inline-flex items-center justify-center gap-1.5"
+          >
+            <span>Faham, Teruskan Merancang</span>
+          </button>
         </div>
       </div>
     </div>

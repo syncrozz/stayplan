@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   auth,
-  googleProvider,
-  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
   firebaseSignOut,
   onAuthStateChanged,
   User,
@@ -16,12 +17,21 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   role: UserRole;
   isAuthenticated: boolean;
-  isGuest: boolean;
+  isAdminMode: boolean;
+  isUnlocked: boolean;
   isLoading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  continueAsGuest: () => void;
+  validateAndActivateAdmin: (pin: string) => Promise<{ success: boolean; message?: string }>;
+  deactivateAdminMode: () => void;
+  unlockWithPin: (pin: string) => Promise<{ success: boolean; message?: string }>;
+  lockApp: () => Promise<void>;
   signOut: () => Promise<void>;
-  // Auth prompt modal management
+  // Admin PIN Modal controls
+  isAdminModalOpen: boolean;
+  adminModalContext: string;
+  openAdminModal: (contextMessage?: string, onAuthenticated?: () => void) => void;
+  closeAdminModal: () => void;
+  requireAdmin: (callback: () => void, contextMessage?: string) => void;
+  // Compatibility aliases
   isAuthModalOpen: boolean;
   authModalContext: string;
   openAuthModal: (contextMessage?: string) => void;
@@ -31,208 +41,255 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const GUEST_STORAGE_KEY = 'stayplan_guest_session';
+// Session storage keys (stores session state token only, never stores raw PIN)
+const ADMIN_MODE_SESSION_KEY = 'stayplan_admin_mode_active';
+
+// Expected SHA-256 digest for secret owner PIN
+const ADMIN_PIN_HASH = '0d8be8cfcf9aa1b7fc945bda750efdc7e085026e0a3c50d90adbca1f451618e1';
+const RAW_ADMIN_PIN = '5313';
+
+// Internal owner credentials for Firebase Auth
+const OWNER_AUTH_EMAIL = 'owner@stayplan.personal';
+const OWNER_AUTH_SECRET = 'StayPlan_Personal_Owner_5313_SecureCloudKey!';
+
+/**
+ * Calculates SHA-256 hex string using Web Crypto API.
+ */
+async function computeSha256(input: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isGuest, setIsGuest] = useState<boolean>(() => {
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(GUEST_STORAGE_KEY) === 'true';
+      return sessionStorage.getItem(ADMIN_MODE_SESSION_KEY) === 'true';
     } catch {
       return false;
     }
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authModalContext, setAuthModalContext] = useState<string>('');
-  const [pendingCallback, setPendingCallback] = useState<(() => void) | null>(null);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
+  const [adminModalContext, setAdminModalContext] = useState<string>('');
+  const [pendingAdminCallback, setPendingAdminCallback] = useState<(() => void) | null>(null);
 
+  // Inactivity auto-deactivate timer for Admin Mode (45 minutes)
+  const lastAdminActivityRef = useRef<number>(Date.now());
+
+  // Listen to Firebase Auth state
   useEffect(() => {
-    // Check if there was a saved guest session
-    if (isGuest && !user) {
-      const mockGuestUser = {
-        uid: 'guest-local-user',
-        email: 'tetamu@stayplan.my',
-        displayName: 'Pengguna Tetamu',
-        photoURL: null,
-        isAnonymous: true
-      } as unknown as User;
-
-      setUser(mockGuestUser);
-      setUserProfile({
-        uid: 'guest-local-user',
-        email: 'tetamu@stayplan.my',
-        displayName: 'Pengguna Tetamu',
-        photoURL: null,
-        role: 'USER',
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-      setIsLoading(false);
-    }
-  }, [isGuest]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setIsGuest(false);
-        try {
-          localStorage.removeItem(GUEST_STORAGE_KEY);
-        } catch {}
-        
         setUser(currentUser);
-        // Provide immediate profile so UI doesn't block
         setUserProfile({
           uid: currentUser.uid,
-          email: currentUser.email,
-          displayName: currentUser.displayName,
-          photoURL: currentUser.photoURL,
-          role: 'USER',
+          email: currentUser.email || OWNER_AUTH_EMAIL,
+          displayName: 'Pentadbir StayPlan',
+          photoURL: null,
+          role: 'ADMIN',
           createdAt: Date.now(),
           updatedAt: Date.now()
         });
-        setIsLoading(false);
 
-        // Fetch/sync full profile with Firestore asynchronously in background
-        (async () => {
-          try {
-            const userRef = doc(db, 'users', currentUser.uid);
-            const snap = await getDoc(userRef);
-
-            if (snap.exists()) {
-              const data = snap.data();
-              setUserProfile({
-                uid: currentUser.uid,
-                email: currentUser.email,
-                displayName: currentUser.displayName,
-                photoURL: currentUser.photoURL,
-                role: (data.role as UserRole) || 'USER',
-                createdAt: data.createdAt || Date.now(),
-                updatedAt: data.updatedAt || Date.now()
-              });
-            } else {
-              // New user registration - strictly assign role = 'USER'
-              const newProfile: UserProfile = {
-                uid: currentUser.uid,
-                email: currentUser.email,
-                displayName: currentUser.displayName,
-                photoURL: currentUser.photoURL,
-                role: 'USER',
-                createdAt: Date.now(),
-                updatedAt: Date.now()
-              };
-              await setDoc(userRef, {
-                ...newProfile,
-                createdAtServer: serverTimestamp()
-              });
-              setUserProfile(newProfile);
-            }
-          } catch (err) {
-            console.warn('Background user profile sync note:', err);
+        // Background sync owner/admin profile document in Firestore
+        try {
+          const userRef = doc(db, 'users', currentUser.uid);
+          const snap = await getDoc(userRef);
+          if (!snap.exists()) {
+            await setDoc(userRef, {
+              uid: currentUser.uid,
+              email: currentUser.email || OWNER_AUTH_EMAIL,
+              displayName: 'Pentadbir StayPlan',
+              role: 'ADMIN',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              createdAtServer: serverTimestamp()
+            });
           }
-        })();
-      } else {
-        if (!isGuest) {
-          setUser(null);
-          setUserProfile(null);
+        } catch (err) {
+          console.warn('Admin profile sync note:', err);
         }
-        setIsLoading(false);
+      } else {
+        // If not logged in, attempt seamless anonymous auth to enable Firestore realtime sync
+        try {
+          await signInAnonymously(auth);
+        } catch (anonErr) {
+          console.warn('Initial session init note:', anonErr);
+        }
       }
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, [isGuest]);
+  }, []);
 
-  const signInWithGoogle = async () => {
-    try {
-      setIsLoading(true);
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        setIsGuest(false);
-        try {
-          localStorage.removeItem(GUEST_STORAGE_KEY);
-        } catch {}
-        if (pendingCallback) {
-          pendingCallback();
-          setPendingCallback(null);
-        }
+  // Inactivity timeout for Admin Mode
+  useEffect(() => {
+    if (!isAdminMode) return;
+
+    const resetActivity = () => {
+      lastAdminActivityRef.current = Date.now();
+    };
+
+    const interval = setInterval(() => {
+      // 45 minutes of inactivity = auto deactivate Admin Mode
+      if (Date.now() - lastAdminActivityRef.current > 45 * 60 * 1000) {
+        deactivateAdminMode();
       }
-      setIsAuthModalOpen(false);
-    } catch (error: any) {
-      console.error('Google Sign In Error:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    }, 60 * 1000);
 
-  const continueAsGuest = () => {
-    setIsGuest(true);
-    try {
-      localStorage.setItem(GUEST_STORAGE_KEY, 'true');
-    } catch {}
+    window.addEventListener('mousemove', resetActivity, { passive: true });
+    window.addEventListener('keydown', resetActivity, { passive: true });
+    window.addEventListener('touchstart', resetActivity, { passive: true });
 
-    const mockGuestUser = {
-      uid: 'guest-local-user',
-      email: 'tetamu@stayplan.my',
-      displayName: 'Pengguna Tetamu',
-      photoURL: null,
-      isAnonymous: true
-    } as unknown as User;
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('mousemove', resetActivity);
+      window.removeEventListener('keydown', resetActivity);
+      window.removeEventListener('touchstart', resetActivity);
+    };
+  }, [isAdminMode]);
 
-    setUser(mockGuestUser);
-    setUserProfile({
-      uid: 'guest-local-user',
-      email: 'tetamu@stayplan.my',
-      displayName: 'Pengguna Tetamu',
-      photoURL: null,
-      role: 'USER',
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    });
-
-    if (pendingCallback) {
-      pendingCallback();
-      setPendingCallback(null);
-    }
-    setIsAuthModalOpen(false);
-  };
-
-  const signOut = async () => {
-    try {
-      setIsGuest(false);
+  /**
+   * Validates PIN and activates Admin Mode.
+   */
+  const validateAndActivateAdmin = useCallback(
+    async (inputPin: string): Promise<{ success: boolean; message?: string }> => {
       try {
-        localStorage.removeItem(GUEST_STORAGE_KEY);
-      } catch {}
+        const cleanPin = (inputPin || '').trim();
+        if (cleanPin.length === 0) {
+          return { success: false, message: 'Sila masukkan 4-digit PIN.' };
+        }
+
+        const inputHash = await computeSha256(cleanPin);
+        const isValid = cleanPin === RAW_ADMIN_PIN || inputHash === ADMIN_PIN_HASH;
+
+        if (!isValid) {
+          return { success: false, message: 'PIN salah. Sila cuba lagi.' };
+        }
+
+        // Establish full Firebase authentication credentials if not already signed in
+        try {
+          await signInWithEmailAndPassword(auth, OWNER_AUTH_EMAIL, OWNER_AUTH_SECRET);
+        } catch (authErr: any) {
+          if (
+            authErr?.code === 'auth/user-not-found' ||
+            authErr?.code === 'auth/invalid-credential' ||
+            authErr?.code === 'auth/wrong-password'
+          ) {
+            try {
+              await createUserWithEmailAndPassword(auth, OWNER_AUTH_EMAIL, OWNER_AUTH_SECRET);
+            } catch (createErr: any) {
+              if (
+                createErr?.code === 'auth/operation-not-allowed' ||
+                createErr?.code === 'auth/email-already-in-use'
+              ) {
+                try {
+                  await signInAnonymously(auth);
+                } catch {}
+              }
+            }
+          } else if (authErr?.code === 'auth/operation-not-allowed') {
+            try {
+              await signInAnonymously(auth);
+            } catch {}
+          }
+        }
+
+        // Save active state to session storage
+        try {
+          sessionStorage.setItem(ADMIN_MODE_SESSION_KEY, 'true');
+        } catch {}
+
+        setIsAdminMode(true);
+        lastAdminActivityRef.current = Date.now();
+
+        // Run pending admin callback if any
+        if (pendingAdminCallback) {
+          const cb = pendingAdminCallback;
+          setPendingAdminCallback(null);
+          // Execute callback shortly after modal unmounts
+          setTimeout(() => {
+            try {
+              cb();
+            } catch (e) {
+              console.error('Error executing admin action:', e);
+            }
+          }, 50);
+        }
+
+        setIsAdminModalOpen(false);
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, message: 'PIN salah. Sila cuba lagi.' };
+      }
+    },
+    [pendingAdminCallback]
+  );
+
+  /**
+   * Deactivates Admin Mode (switches to Read/Member view).
+   */
+  const deactivateAdminMode = useCallback(() => {
+    try {
+      sessionStorage.removeItem(ADMIN_MODE_SESSION_KEY);
+    } catch {}
+    setIsAdminMode(false);
+    setPendingAdminCallback(null);
+  }, []);
+
+  /**
+   * Opens the Admin PIN modal.
+   */
+  const openAdminModal = useCallback((contextMessage?: string, onAuthenticated?: () => void) => {
+    setAdminModalContext(contextMessage || 'Sila masukkan 4-digit PIN keselamatan.');
+    if (onAuthenticated) {
+      setPendingAdminCallback(() => onAuthenticated);
+    }
+    setIsAdminModalOpen(true);
+  }, []);
+
+  /**
+   * Closes the Admin PIN modal without activating.
+   */
+  const closeAdminModal = useCallback(() => {
+    setIsAdminModalOpen(false);
+    setPendingAdminCallback(null);
+  }, []);
+
+  /**
+   * Gate for administrative actions: if in admin mode, runs callback directly;
+   * otherwise, prompts the Admin PIN modal and runs callback upon success.
+   */
+  const requireAdmin = useCallback(
+    (callback: () => void, contextMessage?: string) => {
+      if (isAdminMode) {
+        callback();
+      } else {
+        openAdminModal(contextMessage || 'Sila sahkan PIN Admin untuk meneruskan tindakan ini.', callback);
+      }
+    },
+    [isAdminMode, openAdminModal]
+  );
+
+  const signOut = useCallback(async () => {
+    deactivateAdminMode();
+    try {
       await firebaseSignOut(auth);
-      setUser(null);
-      setUserProfile(null);
     } catch (error) {
       console.error('Sign Out Error:', error);
+    } finally {
+      setUser(null);
+      setUserProfile(null);
     }
-  };
+  }, [deactivateAdminMode]);
 
-  const openAuthModal = (contextMessage?: string) => {
-    setAuthModalContext(contextMessage || 'Log masuk dengan Google untuk mencipta, menyesuaikan dan menyimpan pelan StayPlan peribadi anda.');
-    setIsAuthModalOpen(true);
-  };
-
-  const closeAuthModal = () => {
-    setIsAuthModalOpen(false);
-    setPendingCallback(null);
-  };
-
-  const requireAuth = (callback: () => void, contextMessage?: string) => {
-    if (user) {
-      callback();
-    } else {
-      setPendingCallback(() => callback);
-      openAuthModal(contextMessage);
-    }
-  };
-
-  const role: UserRole = userProfile?.role || 'USER';
+  const role: UserRole = isAdminMode ? 'ADMIN' : 'VIEWER';
 
   return (
     <AuthContext.Provider
@@ -241,16 +298,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userProfile,
         role,
         isAuthenticated: !!user,
-        isGuest,
+        isAdminMode,
+        isUnlocked: true, // App is open to view by all members; Admin Mode gates administrative actions
         isLoading,
-        signInWithGoogle,
-        continueAsGuest,
+        validateAndActivateAdmin,
+        deactivateAdminMode,
+        unlockWithPin: validateAndActivateAdmin,
+        lockApp: async () => deactivateAdminMode(),
         signOut,
-        isAuthModalOpen,
-        authModalContext,
-        openAuthModal,
-        closeAuthModal,
-        requireAuth
+        // Admin PIN modal
+        isAdminModalOpen,
+        adminModalContext,
+        openAdminModal,
+        closeAdminModal,
+        requireAdmin,
+        // Aliases for compatibility
+        isAuthModalOpen: isAdminModalOpen,
+        authModalContext: adminModalContext,
+        openAuthModal: openAdminModal,
+        closeAuthModal: closeAdminModal,
+        requireAuth: requireAdmin
       }}
     >
       {children}

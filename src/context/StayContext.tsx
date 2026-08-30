@@ -56,14 +56,8 @@ interface StayContextType {
 
 const StayContext = createContext<StayContextType | undefined>(undefined);
 
-// Storage keys for Guest-only mode
-const LOCAL_STAYS_KEY = 'stayplan_local_stays';
-const LOCAL_AGENDA_KEY = 'stayplan_local_agenda';
-const LOCAL_CHECKLIST_KEY = 'stayplan_local_checklist';
-const LOCAL_ACTIVE_ID_KEY = 'stayplan_local_active_id';
-
 // Lightweight UI preference key (active stay selection only)
-const getUserActivePrefKey = (uid: string) => `stayplan_pref_active_${uid}`;
+const getUserActivePrefKey = (uid: string) => `stayplan_personal_active_${uid}`;
 
 /**
  * Sanitizes object by removing `undefined` values recursively so Firestore never errors on invalid values.
@@ -85,24 +79,6 @@ function sanitizeForFirestore<T>(obj: T): T {
     return cleaned as T;
   }
   return obj;
-}
-
-function loadLocalData<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.warn(`Failed reading ${key} from localStorage:`, e);
-  }
-  return fallback;
-}
-
-function saveLocalData<T>(key: string, data: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.warn(`Failed writing ${key} to localStorage:`, e);
-  }
 }
 
 // ----------------------------------------------------------------------------------
@@ -179,19 +155,69 @@ function areChecklistListsEqual(a: ChecklistItem[], b: ChecklistItem[]): boolean
   return true;
 }
 
+// Storage cache keys for instant offline-first rendering
+const CACHE_KEYS = {
+  STAYS: 'stayplan_cached_stays_v3',
+  AGENDA: 'stayplan_cached_agenda_v3',
+  CHECKLIST: 'stayplan_cached_checklist_v3',
+  ACTIVE_ID: 'stayplan_cached_active_id_v3'
+};
+
+const getInitialCachedStays = (): Stay[] => {
+  try {
+    const raw = localStorage.getItem(CACHE_KEYS.STAYS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return SHOWCASE_STAYS;
+};
+
+const getInitialCachedAgenda = (): AgendaItem[] => {
+  try {
+    const raw = localStorage.getItem(CACHE_KEYS.AGENDA);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return SHOWCASE_AGENDA_ITEMS;
+};
+
+const getInitialCachedChecklist = (): ChecklistItem[] => {
+  try {
+    const raw = localStorage.getItem(CACHE_KEYS.CHECKLIST);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return SHOWCASE_CHECKLIST_ITEMS;
+};
+
+const getInitialCachedActiveStayId = (): string | null => {
+  try {
+    const raw = localStorage.getItem(CACHE_KEYS.ACTIVE_ID);
+    if (raw) return raw;
+  } catch {}
+  return SHOWCASE_STAYS[0]?.id || null;
+};
+
 export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, requireAuth } = useAuth();
+  const { user, isUnlocked, requireAuth } = useAuth();
 
-  // State management
-  const [userStays, setUserStays] = useState<Stay[]>([]);
-  const [userAgendaItems, setUserAgendaItems] = useState<AgendaItem[]>([]);
-  const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>([]);
-  const [activeStayId, setActiveStayIdState] = useState<string | null>(null);
+  // Instant offline-first state initialization from cache
+  const [userStays, setUserStays] = useState<Stay[]>(() => getInitialCachedStays());
+  const [userAgendaItems, setUserAgendaItems] = useState<AgendaItem[]>(() => getInitialCachedAgenda());
+  const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>(() => getInitialCachedChecklist());
+  const [activeStayId, setActiveStayIdState] = useState<string | null>(() => getInitialCachedActiveStayId());
 
-  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(true);
+  // Non-blocking loading indicator (never blocks whole UI)
+  const [isLoadingStays, setIsLoadingStays] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (navigator.onLine ? 'SYNCED' : 'OFFLINE'));
-  const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => Date.now());
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Health and realtime listener status references
@@ -204,7 +230,40 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [unsavedCount, setUnsavedCount] = useState<number>(0);
   const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null>(null);
 
-  const isPersonalMode = !!user;
+  const isPersonalMode = !!user && isUnlocked;
+
+  // Persist cache to local storage on changes for instantaneous subsequent visits
+  useEffect(() => {
+    if (userStays && userStays.length > 0) {
+      try {
+        localStorage.setItem(CACHE_KEYS.STAYS, JSON.stringify(userStays));
+      } catch {}
+    }
+  }, [userStays]);
+
+  useEffect(() => {
+    if (userAgendaItems && userAgendaItems.length > 0) {
+      try {
+        localStorage.setItem(CACHE_KEYS.AGENDA, JSON.stringify(userAgendaItems));
+      } catch {}
+    }
+  }, [userAgendaItems]);
+
+  useEffect(() => {
+    if (userChecklistItems && userChecklistItems.length > 0) {
+      try {
+        localStorage.setItem(CACHE_KEYS.CHECKLIST, JSON.stringify(userChecklistItems));
+      } catch {}
+    }
+  }, [userChecklistItems]);
+
+  useEffect(() => {
+    if (activeStayId) {
+      try {
+        localStorage.setItem(CACHE_KEYS.ACTIVE_ID, activeStayId);
+      } catch {}
+    }
+  }, [activeStayId]);
 
   // Listen to network status (Online / Offline)
   useEffect(() => {
@@ -235,12 +294,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ----------------------------------------------------------------------------------
-  // 1. REFRESH FROM CLOUD (Optimized Realtime Health Check & On-Demand Revalidation)
+  // 1. REFRESH FROM CLOUD (Authoritative Firestore Query Revalidation)
   // ----------------------------------------------------------------------------------
   const refreshFromCloud = useCallback(
     async (options?: { forceFetch?: boolean }): Promise<{ success: boolean; message: string; staysCount: number }> => {
-      if (!user || user.uid === 'guest-local-user') {
-        return { success: false, message: 'Sila log masuk dengan Google untuk memuat data.', staysCount: 0 };
+      if (!user) {
+        return { success: false, message: 'Sila buka kunci StayPlan untuk memuat data.', staysCount: 0 };
       }
 
       if (!navigator.onLine) {
@@ -323,7 +382,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return {
           success: true,
-          message: `Berjaya memuat semula ${fetchedStays.length} stay.`,
+          message: `Berjaya memuat semula ${fetchedStays.length} stay dari Cloud.`,
           staysCount: fetchedStays.length
         };
       } catch (err: any) {
@@ -339,16 +398,15 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [user, activeStayId, userStays.length]
   );
 
-  // Alias for backward compatibility with existing UI components
   const forceSyncWithCloud = refreshFromCloud;
 
   const saveAndSync = useCallback(
     async (customSuccessMsg?: string): Promise<{ success: boolean; message: string; staysCount: number }> => {
-      if (!user || user.uid === 'guest-local-user') {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk sync semua data ke akaun anda.');
+      if (!user) {
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk sync data.');
         return {
           success: false,
-          message: 'Sila log masuk dengan Google untuk sync ke akaun anda.',
+          message: 'Sila buka kunci StayPlan untuk sync.',
           staysCount: 0
         };
       }
@@ -357,13 +415,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.success) {
         setSaveFeedback({
           type: 'success',
-          message: customSuccessMsg || 'Data telah di-sync ke akaun anda.',
+          message: customSuccessMsg || 'Data telah diselaraskan ke Cloud Firestore.',
           timestamp: Date.now()
         });
       } else {
         setSaveFeedback({
           type: 'error',
-          message: res.message || 'Sync Failed.',
+          message: res.message || 'Sync gagal.',
           timestamp: Date.now()
         });
       }
@@ -377,7 +435,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ----------------------------------------------------------------------------------
   useEffect(() => {
     if (!user) {
-      // Demo / Logged-out showcase view
       setUserStays([]);
       setUserAgendaItems([]);
       setUserChecklistItems([]);
@@ -388,64 +445,22 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    if (user.uid === 'guest-local-user') {
-      // Guest local storage mode (Strictly isolated to LocalStorage)
-      const savedStays = loadLocalData<Stay[]>(LOCAL_STAYS_KEY, []);
-      const savedAgenda = loadLocalData<AgendaItem[]>(LOCAL_AGENDA_KEY, []);
-      const savedChecklist = loadLocalData<ChecklistItem[]>(LOCAL_CHECKLIST_KEY, []);
-      const savedActiveId = loadLocalData<string | null>(LOCAL_ACTIVE_ID_KEY, null);
-
-      if (savedStays.length === 0) {
-        const guestStays: Stay[] = SHOWCASE_STAYS.map((s) => ({
-          ...s,
-          userId: 'guest-local-user'
-        }));
-        const guestAgenda: AgendaItem[] = SHOWCASE_AGENDA_ITEMS.map((a) => ({
-          ...a,
-          userId: 'guest-local-user'
-        }));
-        const guestChecklist: ChecklistItem[] = SHOWCASE_CHECKLIST_ITEMS.map((c) => ({
-          ...c,
-          userId: 'guest-local-user'
-        }));
-
-        setUserStays(guestStays);
-        setUserAgendaItems(guestAgenda);
-        setUserChecklistItems(guestChecklist);
-        setActiveStayIdState(guestStays[0]?.id || null);
-
-        saveLocalData(LOCAL_STAYS_KEY, guestStays);
-        saveLocalData(LOCAL_AGENDA_KEY, guestAgenda);
-        saveLocalData(LOCAL_CHECKLIST_KEY, guestChecklist);
-        saveLocalData(LOCAL_ACTIVE_ID_KEY, guestStays[0]?.id || null);
-      } else {
-        setUserStays(savedStays);
-        setUserAgendaItems(savedAgenda);
-        setUserChecklistItems(savedChecklist);
-        setActiveStayIdState(
-          savedActiveId && savedStays.some((s) => s.id === savedActiveId) ? savedActiveId : savedStays[0]?.id || null
-        );
-      }
+    // Realtime background sync: updates state seamlessly without locking the interface
+    if (userStays.length === 0) {
       setIsLoadingStays(false);
-      setSyncStatus('SYNCED');
-      staysListenerActiveRef.current = false;
-      return;
     }
-
-    // AUTHENTICATED GOOGLE USER:
-    // Firestore with persistent local cache will hydrate instantly from IndexedDB,
-    // and seamlessly update over realtime WebSocket / HTTP streaming.
-    setIsLoadingStays(true);
 
     // Initial preference for active stay id if available
-    const savedActivePref = localStorage.getItem(getUserActivePrefKey(user.uid));
-    if (savedActivePref) {
-      setActiveStayIdState(savedActivePref);
-    }
+    try {
+      const savedActivePref = localStorage.getItem(getUserActivePrefKey(user.uid));
+      if (savedActivePref) {
+        setActiveStayIdState(savedActivePref);
+      }
+    } catch {}
 
     const staysColRef = collection(db, 'users', user.uid, 'stays');
 
-    // Realtime subscription to the user's stays collection
+    // Realtime subscription to the owner's stays collection
     const unsubscribeStays = onSnapshot(
       staysColRef,
       (snapshot) => {
@@ -472,9 +487,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const nextId = fetchedStays[0].id;
           try {
             localStorage.setItem(getUserActivePrefKey(user.uid), nextId);
-          } catch {
-            // ignore
-          }
+          } catch {}
           return nextId;
         });
 
@@ -502,7 +515,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 3. REALTIME SUBSCRIPTION FOR ACTIVE STAY'S SUBCOLLECTIONS (Agenda & Checklist)
   // ----------------------------------------------------------------------------------
   useEffect(() => {
-    if (!user || user.uid === 'guest-local-user' || !activeStayId) {
+    if (!user || !activeStayId) {
       if (!user) {
         setUserAgendaItems([]);
         setUserChecklistItems([]);
@@ -531,7 +544,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLastSyncTime(Date.now());
       },
       (err) => {
-        console.warn('Agenda items sync note:', err);
+        console.warn('Agenda items sync status:', err);
       }
     );
 
@@ -549,7 +562,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLastSyncTime(Date.now());
       },
       (err) => {
-        console.warn('Checklist items sync note:', err);
+        console.warn('Checklist items sync status:', err);
       }
     );
 
@@ -589,12 +602,10 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setActiveStayId = (id: string) => {
     setActiveStayIdState(id);
-    if (user && user.uid !== 'guest-local-user') {
+    if (user) {
       try {
         localStorage.setItem(getUserActivePrefKey(user.uid), id);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   };
 
@@ -605,7 +616,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addStay = useCallback(
     async (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>): Promise<string> => {
       if (!user) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk mencipta dan menyimpan StayPlan peribadi.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk mencipta Stay.');
         return '';
       }
 
@@ -646,12 +657,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserAgendaItems((prev) => [...prev, starterAgenda]);
       setActiveStayIdState(stayId);
 
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_STAYS_KEY, [newStay, ...userStays]);
-        saveLocalData(LOCAL_ACTIVE_ID_KEY, stayId);
-        return stayId;
-      }
-
       try {
         setSyncStatus('SAVING');
         setIsSyncing(true);
@@ -685,13 +690,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return stayId;
     },
-    [user, userStays, requireAuth]
+    [user, requireAuth]
   );
 
   const updateStay = useCallback(
     async (id: string, updates: Partial<Stay>) => {
       if (!user) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk mengemas kini maklumat Stay.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk mengemas kini Stay.');
         return;
       }
 
@@ -703,11 +708,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Optimistic UI update
       setUserStays((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: now } : s)));
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_STAYS_KEY, userStays.map((s) => (s.id === id ? { ...s, ...updates, updatedAt: now } : s)));
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -728,13 +728,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, userStays, requireAuth]
+    [user, requireAuth]
   );
 
   const deleteStay = useCallback(
     async (id: string) => {
       if (!user) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk memadam Stay.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memadam Stay.');
         return;
       }
 
@@ -747,13 +747,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       setUserAgendaItems((prev) => prev.filter((a) => a.stayId !== id));
       setUserChecklistItems((prev) => prev.filter((c) => c.stayId !== id));
-
-      if (user.uid === 'guest-local-user') {
-        const nextStays = userStays.filter((s) => s.id !== id);
-        saveLocalData(LOCAL_STAYS_KEY, nextStays);
-        saveLocalData(LOCAL_ACTIVE_ID_KEY, nextStays[0]?.id || null);
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -781,13 +774,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, userStays, requireAuth]
+    [user, requireAuth]
   );
 
   const duplicateStay = useCallback(
     async (id: string) => {
       if (!user) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk menduplikasi pelan Stay.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menduplikasi Stay.');
         return;
       }
 
@@ -833,12 +826,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserChecklistItems((prev) => [...prev, ...dupChecklists]);
       setActiveStayIdState(newStayId);
 
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_STAYS_KEY, [duplicatedStay, ...userStays]);
-        saveLocalData(LOCAL_ACTIVE_ID_KEY, newStayId);
-        return;
-      }
-
       try {
         setSyncStatus('SAVING');
         setIsSyncing(true);
@@ -877,7 +864,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addAgendaItem = useCallback(
     async (item: Omit<AgendaItem, 'id' | 'userId'>): Promise<string> => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk menambah aktiviti ke agenda anda.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menambah aktiviti.');
         return '';
       }
 
@@ -894,11 +881,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Optimistic update
       setUserAgendaItems((prev) => [...prev, newItem]);
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_AGENDA_KEY, [...userAgendaItems, newItem]);
-        return newItemId;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -922,13 +904,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newItemId;
     },
-    [user, activeStay, userAgendaItems, requireAuth]
+    [user, activeStay, requireAuth]
   );
 
   const updateAgendaItem = useCallback(
     async (id: string, updates: Partial<AgendaItem>) => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk mengemas kini aktiviti.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk mengemas kini aktiviti.');
         return;
       }
 
@@ -940,11 +922,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Optimistic update
       setUserAgendaItems((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: now } : a)));
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: now } : a)));
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -965,7 +942,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, userAgendaItems, requireAuth]
+    [user, activeStay, requireAuth]
   );
 
   const batchUpdateAgendaItems = useCallback(
@@ -982,11 +959,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return up ? { ...a, ...up, updatedAt: now } : a;
         })
       );
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems);
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -1011,23 +983,18 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, userAgendaItems]
+    [user, activeStay]
   );
 
   const deleteAgendaItem = useCallback(
     async (id: string) => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk memadam aktiviti.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memadam aktiviti.');
         return;
       }
 
       // Optimistic removal
       setUserAgendaItems((prev) => prev.filter((a) => a.id !== id));
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems.filter((a) => a.id !== id));
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -1048,13 +1015,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, userAgendaItems, requireAuth]
+    [user, activeStay, requireAuth]
   );
 
   const toggleAgendaComplete = useCallback(
     async (id: string) => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk menanda aktiviti siap.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menanda aktiviti siap.');
         return;
       }
 
@@ -1065,11 +1032,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Optimistic update
       setUserAgendaItems((prev) => prev.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted, updatedAt: now } : a)));
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_AGENDA_KEY, userAgendaItems.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted, updatedAt: now } : a)));
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -1096,7 +1058,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addChecklistItem = useCallback(
     async (item: Omit<ChecklistItem, 'id' | 'userId'>): Promise<string> => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk menambah item senarai semak.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menambah senarai semak.');
         return '';
       }
 
@@ -1113,11 +1075,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Optimistic update
       setUserChecklistItems((prev) => [...prev, newItem]);
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_CHECKLIST_KEY, [...userChecklistItems, newItem]);
-        return newItemId;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -1141,13 +1098,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newItemId;
     },
-    [user, activeStay, userChecklistItems, requireAuth]
+    [user, activeStay, requireAuth]
   );
 
   const toggleChecklistComplete = useCallback(
     async (id: string) => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk menanda senarai semak.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menanda senarai semak.');
         return;
       }
 
@@ -1158,11 +1115,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Optimistic update
       setUserChecklistItems((prev) => prev.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted, updatedAt: now } : c)));
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_CHECKLIST_KEY, userChecklistItems.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted, updatedAt: now } : c)));
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -1189,17 +1141,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteChecklistItem = useCallback(
     async (id: string) => {
       if (!user || !activeStay) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk memadam item.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memadam senarai semak.');
         return;
       }
 
       // Optimistic removal
       setUserChecklistItems((prev) => prev.filter((c) => c.id !== id));
-
-      if (user.uid === 'guest-local-user') {
-        saveLocalData(LOCAL_CHECKLIST_KEY, userChecklistItems.filter((c) => c.id !== id));
-        return;
-      }
 
       try {
         setSyncStatus('SAVING');
@@ -1220,13 +1167,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, userChecklistItems, requireAuth]
+    [user, activeStay, requireAuth]
   );
 
   const createFromStarterTemplate = useCallback(
     async (templateType: StayType): Promise<string> => {
       if (!user) {
-        requireAuth(() => {}, 'Log masuk dengan Google untuk memilih templat.');
+        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memilih templat.');
         return '';
       }
 

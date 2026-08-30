@@ -1,5 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  User
+} from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -14,10 +22,6 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Initialize Auth
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-});
 
 // Initialize Firestore with IndexedDB persistent local cache & multi-tab coordination
 let firestoreInstance: Firestore;
@@ -37,7 +41,7 @@ try {
     customDbId
   );
 } catch {
-  // Graceful fallback if instance already exists (e.g. during fast-refresh or secondary module loads)
+  // Graceful fallback if instance already exists
   firestoreInstance =
     firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
       ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
@@ -46,6 +50,12 @@ try {
 
 export const db = firestoreInstance;
 
-export { signInWithPopup, firebaseSignOut, onAuthStateChanged };
+export {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+  firebaseSignOut,
+  onAuthStateChanged
+};
 export type { User };
 

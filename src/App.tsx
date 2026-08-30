@@ -14,8 +14,7 @@ import { ActivityModal } from './components/ActivityModal';
 import { ShareExportModal } from './components/ShareExportModal';
 import { AuthModal } from './components/AuthModal';
 import { SaveSyncFloatingBar } from './components/SaveSyncFloatingBar';
-import { ShowcaseIntroHero } from './components/ShowcaseIntroHero';
-import { WalkthroughModal } from './components/WalkthroughModal';
+import { PrivateAccessScreen } from './components/PrivateAccessScreen';
 import { STAY_TYPES } from './utils/constants';
 import { formatDateRange, formatStaySummary, getLocalTodayDate, getLocalDateWithOffset } from './utils/formatters';
 import { Stay, AgendaItem, TimeSlot } from './types';
@@ -23,22 +22,13 @@ import {
   Calendar,
   MapPin,
   Users,
-  Edit3,
   Share2,
   ListChecks,
   Home,
-  CalendarDays,
   Sparkles,
   Plus,
-  Lock,
-  Compass,
-  ShieldAlert,
-  LayoutGrid,
   Cloud,
-  Smartphone,
-  CheckSquare,
-  RefreshCw,
-  CheckCircle2
+  RefreshCw
 } from 'lucide-react';
 
 function StayPlanApp() {
@@ -55,14 +45,13 @@ function StayPlanApp() {
     addChecklistItem,
     toggleChecklistComplete,
     deleteChecklistItem,
-    isPersonalMode,
     isLoadingStays,
     isSyncing,
     syncStatus,
     refreshFromCloud
   } = useStay();
 
-  const { user, isAuthenticated, isGuest, isLoading: isAuthLoading, openAuthModal } = useAuth();
+  const { user, isUnlocked, isLoading: isAuthLoading, openAuthModal } = useAuth();
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   // Modals state
@@ -71,7 +60,6 @@ function StayPlanApp() {
   const [isCreateStayOpen, setIsCreateStayOpen] = useState(false);
   const [editingStay, setEditingStay] = useState<Stay | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
-  const [isWalkthroughOpen, setIsWalkthroughOpen] = useState(false);
 
   // Activity Modal state
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
@@ -82,21 +70,9 @@ function StayPlanApp() {
   // Main navigation tab: 'plan' | 'calendar' | 'checklist' | 'info'
   const [activeTab, setActiveTab] = useState<'plan' | 'calendar' | 'checklist' | 'info'>('plan');
 
-  const handleExploreDemo = () => {
-    setActiveTab('plan');
-    const el = document.getElementById('stay-hero-banner');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   const typeMeta = activeStay ? STAY_TYPES[activeStay.type] || STAY_TYPES.custom : null;
 
   const handleOpenNewActivity = (dayNumber: number, slot: TimeSlot) => {
-    if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk menambah aktiviti ke dalam perancangan anda.');
-      return;
-    }
     setEditingActivity(null);
     setDefaultDay(dayNumber);
     setDefaultSlot(slot);
@@ -104,10 +80,6 @@ function StayPlanApp() {
   };
 
   const handleOpenEditActivity = (item: AgendaItem) => {
-    if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk menyunting aktiviti.');
-      return;
-    }
     setEditingActivity(item);
     setDefaultDay(item.dayNumber);
     setDefaultSlot(item.timeSlot);
@@ -123,10 +95,6 @@ function StayPlanApp() {
   };
 
   const handleOpenEditStay = (stayToEdit: Stay) => {
-    if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk menyunting maklumat Stay.');
-      return;
-    }
     setEditingStay(stayToEdit);
     setIsCreateStayOpen(true);
   };
@@ -140,21 +108,12 @@ function StayPlanApp() {
   };
 
   const handleOpenNewStay = () => {
-    if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk mencipta pelan stay peribadi anda.');
-      return;
-    }
     setEditingStay(null);
     setIsCreateStayOpen(true);
   };
 
   // Quick Starter Templates for empty personal workspace
   const handleCreateStarterStay = (templateType: 'balik_kampung' | 'homestay' | 'short_getaway') => {
-    if (!isAuthenticated) {
-      openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda.');
-      return;
-    }
-
     const today = getLocalTodayDate();
     const end3Days = getLocalDateWithOffset(2, today);
     const end2Days = getLocalDateWithOffset(1, today);
@@ -195,12 +154,15 @@ function StayPlanApp() {
     }
   };
 
-  // Seamless loading - no blocking full-screen freeze
+  // If app is not unlocked by the owner PIN, render the Private Access Screen
+  if (!isUnlocked) {
+    return <PrivateAccessScreen />;
+  }
 
-  // If user is authenticated and has 0 stays, render welcoming onboarding
-  if (isAuthenticated && !activeStay) {
+  // If owner has 0 stays, render welcoming onboarding
+  if (!activeStay) {
     return (
-      <div className="min-h-screen flex flex-col bg-stone-50 font-sans text-stone-900">
+      <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
         <Header
           onOpenNewStay={handleOpenNewStay}
           onOpenStayList={() => setIsStayListOpen(true)}
@@ -209,59 +171,59 @@ function StayPlanApp() {
         />
 
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-12 flex flex-col items-center justify-center text-center space-y-8">
-          <div className="inline-flex p-4 rounded-3xl bg-amber-100/70 text-amber-700 border border-amber-200">
+          <div className="inline-flex p-4 rounded-3xl bg-teal-100/70 text-teal-700 border border-teal-200">
             <Sparkles className="w-10 h-10" />
           </div>
 
           <div className="space-y-2 max-w-lg">
-            <h2 className="text-3xl font-extrabold text-stone-900 tracking-tight">
-              Selamat Datang ke Ruang Peribadi Anda!
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              Selamat Datang ke StayPlan Personal!
             </h2>
-            <p className="text-sm text-stone-600 leading-relaxed">
-              Ruang StayPlan anda adalah milik persendirian anda. Mulakan dengan mencipta perancangan short stay 2–4 hari pertama anda.
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Ruang StayPlan anda adalah milik persendirian dan diselaraskan terus ke Firestore. Mulakan dengan mencipta perancangan short stay 2–4 hari pertama anda.
             </p>
           </div>
 
-          {/* Action Buttons */}
+          {/* Starter Action Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full max-w-xl text-left">
             <button
               onClick={() => handleCreateStarterStay('balik_kampung')}
-              className="p-4 rounded-2xl bg-white hover:bg-amber-50/50 border border-stone-200 hover:border-amber-400 transition-all group shadow-2xs"
+              className="p-4 rounded-2xl bg-white hover:bg-teal-50/50 border border-slate-200 hover:border-teal-400 transition-all group shadow-2xs cursor-pointer"
             >
               <span className="text-2xl">🏡</span>
-              <h3 className="text-xs font-bold text-stone-900 group-hover:text-amber-900 mt-2">
+              <h3 className="text-xs font-bold text-slate-900 group-hover:text-teal-950 mt-2">
                 Balik Kampung
               </h3>
-              <p className="text-[11px] text-stone-500 mt-0.5">3 Hari 2 Malam bersama orang tua</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">3 Hari 2 Malam bersama orang tua</p>
             </button>
 
             <button
               onClick={() => handleCreateStarterStay('homestay')}
-              className="p-4 rounded-2xl bg-white hover:bg-amber-50/50 border border-stone-200 hover:border-amber-400 transition-all group shadow-2xs"
+              className="p-4 rounded-2xl bg-white hover:bg-teal-50/50 border border-slate-200 hover:border-teal-400 transition-all group shadow-2xs cursor-pointer"
             >
               <span className="text-2xl">🏊‍♂️</span>
-              <h3 className="text-xs font-bold text-stone-900 group-hover:text-amber-900 mt-2">
+              <h3 className="text-xs font-bold text-slate-900 group-hover:text-teal-950 mt-2">
                 Percutian Homestay
               </h3>
-              <p className="text-[11px] text-stone-500 mt-0.5">3 Hari 2 Malam keluarga besar</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">3 Hari 2 Malam keluarga besar</p>
             </button>
 
             <button
               onClick={() => handleCreateStarterStay('short_getaway')}
-              className="p-4 rounded-2xl bg-white hover:bg-amber-50/50 border border-stone-200 hover:border-amber-400 transition-all group shadow-2xs"
+              className="p-4 rounded-2xl bg-white hover:bg-teal-50/50 border border-slate-200 hover:border-teal-400 transition-all group shadow-2xs cursor-pointer"
             >
               <span className="text-2xl">🌿</span>
-              <h3 className="text-xs font-bold text-stone-900 group-hover:text-amber-900 mt-2">
+              <h3 className="text-xs font-bold text-slate-900 group-hover:text-teal-950 mt-2">
                 Weekend Getaway
               </h3>
-              <p className="text-[11px] text-stone-500 mt-0.5">2 Hari 1 Malam recharge santai</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">2 Hari 1 Malam recharge santai</p>
             </button>
           </div>
 
           <div className="pt-2">
             <button
               onClick={handleOpenNewStay}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-2xl shadow-xs transition-all active:scale-95"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-2xl shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ Cipta Stay Kustom Baharu</span>
@@ -284,12 +246,12 @@ function StayPlanApp() {
 
   if (!activeStay) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-stone-50">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
         <div className="text-center space-y-4">
-          <p className="text-stone-600">Tiada perancangan stay dipilih.</p>
+          <p className="text-slate-600">Tiada perancangan stay dipilih.</p>
           <button
             onClick={() => setIsStayListOpen(true)}
-            className="px-4 py-2 text-xs font-bold text-white bg-amber-600 rounded-xl"
+            className="px-4 py-2 text-xs font-bold text-white bg-teal-600 rounded-xl cursor-pointer"
           >
             Pilih Stay
           </button>
@@ -299,7 +261,7 @@ function StayPlanApp() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-stone-50/60 font-sans text-stone-900">
+    <div className="min-h-screen flex flex-col bg-slate-50/60 font-sans text-slate-900">
       {/* App Header */}
       <Header
         onOpenNewStay={handleOpenNewStay}
@@ -308,132 +270,76 @@ function StayPlanApp() {
         onOpenSupport={() => setIsSupportOpen(true)}
       />
 
-      {/* Device Sync & Persistence Status Notification Banner */}
-      {!isAuthenticated ? (
-        <div className="bg-amber-500/10 border-b border-amber-200/80">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-950">
-            <div className="flex items-center gap-2">
-              <span className="p-1 rounded-md bg-amber-600 text-white shrink-0">
-                <Sparkles className="w-3.5 h-3.5" />
-              </span>
-              <span>
-                <strong>Sedang melihat contoh StayPlan.</strong> Explore contoh ini untuk faham cara StayPlan berfungsi.
-              </span>
-            </div>
+      {/* Realtime Sync Status Banner */}
+      <div className="bg-teal-50/80 border-b border-teal-200/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 flex items-center justify-between gap-3 text-[11px] text-teal-950">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Cloud className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+            <span className="truncate">
+              <strong>StayPlan Personal:</strong> Penyelarasan Awan Masa Nyata Aktif di Semua Peranti.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => openAuthModal('Log masuk dengan Google untuk mula merancang stay peribadi anda.')}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              onClick={async () => {
+                const res = await refreshFromCloud({ forceFetch: true });
+                setSyncFeedback(res.message);
+                setTimeout(() => setSyncFeedback(null), 4000);
+              }}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-teal-950 bg-white hover:bg-teal-100 border border-teal-300 rounded-lg shadow-2xs transition-all cursor-pointer active:scale-95"
+              title="Refresh from Cloud"
             >
-              <Lock className="w-3 h-3" />
-              <span>Mula Rancang Dengan Google</span>
+              <RefreshCw className={`w-3 h-3 text-teal-600 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Refresh from Cloud'}</span>
             </button>
+            <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full">
+              ● {syncStatus === 'SAVING' || syncStatus === 'SYNCING' ? 'Syncing...' : syncStatus === 'ERROR' ? 'Sync Gagal' : syncStatus === 'OFFLINE' ? 'Offline' : 'Synced'}
+            </span>
           </div>
         </div>
-      ) : isGuest ? (
-        <div className="bg-amber-50 border-b border-amber-300/80">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-950">
-            <div className="flex items-center gap-2">
-              <span className="p-1 rounded-md bg-amber-700 text-white shrink-0">
-                <Smartphone className="w-3.5 h-3.5" />
-              </span>
-              <span>
-                <strong>Mod Tetamu:</strong> Data hanya disimpan pada peranti ini sehingga anda log masuk.
-              </span>
-            </div>
-            <button
-              onClick={() => openAuthModal('Log masuk dengan Google untuk sync semua data ke akaun anda.')}
-              className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg text-[11px] shrink-0 transition-colors cursor-pointer"
-            >
-              Log Masuk & Sync
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-emerald-50 border-b border-emerald-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 flex items-center justify-between gap-3 text-[11px] text-emerald-950">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">
-                <strong>Sync Aktif:</strong> Dihubungkan ke akaun <strong>{user?.email}</strong>.
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={async () => {
-                  const res = await refreshFromCloud();
-                  setSyncFeedback(res.message);
-                  setTimeout(() => setSyncFeedback(null), 4000);
-                }}
-                disabled={isSyncing}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition-all cursor-pointer active:scale-95"
-                title="Refresh from Cloud"
-              >
-                <RefreshCw className={`w-3 h-3 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Syncing...' : 'Refresh from Cloud'}</span>
-              </button>
-              <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                ● {syncStatus === 'SAVING' || syncStatus === 'SYNCING' ? 'Syncing...' : syncStatus === 'ERROR' ? 'Sync Failed' : syncStatus === 'OFFLINE' ? 'Offline' : 'Synced'}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
         
-        {/* First-Time User Experience / Demo Showcase Introduction */}
-        {!isPersonalMode && (
-          <ShowcaseIntroHero
-            activeStay={activeStay}
-            onExploreDemo={handleExploreDemo}
-            onOpenWalkthrough={() => setIsWalkthroughOpen(true)}
-          />
-        )}
-
         {/* Stay Hero Card */}
-        <section id="stay-hero-banner" className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 shadow-2xs space-y-5 relative overflow-hidden">
+        <section id="stay-hero-banner" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-2xs space-y-5 relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             
             {/* Stay Title & Metadata */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200/80 text-xs font-bold inline-flex items-center gap-1.5">
+                <span className="px-3 py-1 rounded-full bg-teal-50 text-teal-950 border border-teal-200/80 text-xs font-bold inline-flex items-center gap-1.5">
                   <span>{typeMeta?.icon}</span>
                   <span>{typeMeta?.label}</span>
                 </span>
-                <span className="px-3 py-1 rounded-full bg-stone-100 text-stone-800 text-xs font-bold border border-stone-200/80">
+                <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200/80">
                   {formatStaySummary(activeStay)}
                 </span>
-                {isPersonalMode ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
-                    Peribadi
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold">
-                    ✨ CONTOH / DEMO
-                  </span>
-                )}
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                  Personal Stay
+                </span>
               </div>
 
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 {activeStay.title}
               </h2>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm text-stone-600">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm text-slate-600">
                 <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-amber-600 shrink-0" />
+                  <MapPin className="w-4 h-4 text-teal-600 shrink-0" />
                   <span>{activeStay.location || 'Lokasi Belum Ditetapkan'}</span>
                 </span>
 
                 <span className="inline-flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-amber-600 shrink-0" />
+                  <Calendar className="w-4 h-4 text-teal-600 shrink-0" />
                   <span>{formatDateRange(activeStay.startDate, activeStay.endDate, activeStay.durationDays)}</span>
                 </span>
 
                 {activeStay.companions && activeStay.companions.length > 0 && (
                   <span className="inline-flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-amber-600 shrink-0" />
+                    <Users className="w-4 h-4 text-teal-600 shrink-0" />
                     <span>{activeStay.companions.length} Ahli / Tetamu ({activeStay.companions.join(', ')})</span>
                   </span>
                 )}
@@ -448,8 +354,8 @@ function StayPlanApp() {
                 onClick={() => setActiveTab('plan')}
                 className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-black rounded-xl transition-all shadow-2xs cursor-pointer ${
                   activeTab === 'plan'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                 }`}
               >
                 <span>📝 Perancangan</span>
@@ -461,8 +367,8 @@ function StayPlanApp() {
                 onClick={() => setActiveTab('calendar')}
                 className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all shadow-2xs cursor-pointer ${
                   activeTab === 'calendar'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
@@ -473,7 +379,7 @@ function StayPlanApp() {
                 id="hero-edit-stay-btn"
                 type="button"
                 onClick={() => handleOpenEditStay(activeStay)}
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
               >
                 <span>✏️ Edit</span>
               </button>
@@ -493,14 +399,14 @@ function StayPlanApp() {
         </section>
 
         {/* View Navigation Tabs: Step Flow Structure */}
-        <div className="flex border-b border-stone-200 gap-1 sm:gap-2 text-xs sm:text-sm font-bold overflow-x-auto">
+        <div className="flex border-b border-slate-200 gap-1 sm:gap-2 text-xs sm:text-sm font-bold overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('plan')}
             className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'plan'
-                ? 'border-amber-600 text-amber-950 font-black'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
+                ? 'border-teal-600 text-teal-950 font-black'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <span>📝</span>
@@ -512,8 +418,8 @@ function StayPlanApp() {
             onClick={() => setActiveTab('calendar')}
             className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'calendar'
-                ? 'border-amber-600 text-amber-950 font-black'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
+                ? 'border-teal-600 text-teal-950 font-black'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Calendar className="w-4 h-4" />
@@ -525,8 +431,8 @@ function StayPlanApp() {
             onClick={() => setActiveTab('checklist')}
             className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'checklist'
-                ? 'border-amber-600 text-amber-950 font-black'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
+                ? 'border-teal-600 text-teal-950 font-black'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <ListChecks className="w-4 h-4" />
@@ -538,8 +444,8 @@ function StayPlanApp() {
             onClick={() => setActiveTab('info')}
             className={`pb-3 px-3 sm:px-4 flex items-center gap-2 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'info'
-                ? 'border-amber-600 text-amber-950 font-black'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
+                ? 'border-teal-600 text-teal-950 font-black'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Home className="w-4 h-4" />
@@ -565,45 +471,29 @@ function StayPlanApp() {
             onEditItem={handleOpenEditActivity}
             onNavigateToPlan={() => setActiveTab('plan')}
             onToggleComplete={(id) => {
-              if (!isAuthenticated) {
-                openAuthModal('Log masuk dengan Google untuk menandakan aktiviti selesai.');
-                return;
-              }
               toggleAgendaComplete(id);
             }}
           />
         )}
 
-        {/* Tab 4: Packing Checklist */}
+        {/* Tab 3: Packing Checklist */}
         {activeTab === 'checklist' && (
           <PackingChecklist
             items={activeChecklistItems}
             stay={activeStay}
             onAddItem={(item) => {
-              if (!isAuthenticated) {
-                openAuthModal('Log masuk dengan Google untuk menambah item ke dalam senarai semak.');
-                return;
-              }
               addChecklistItem(item);
             }}
             onToggleItem={(id) => {
-              if (!isAuthenticated) {
-                openAuthModal('Log masuk dengan Google untuk mengemaskini senarai semak.');
-                return;
-              }
               toggleChecklistComplete(id);
             }}
             onDeleteItem={(id) => {
-              if (!isAuthenticated) {
-                openAuthModal('Log masuk dengan Google untuk memadam item.');
-                return;
-              }
               deleteChecklistItem(id);
             }}
           />
         )}
 
-        {/* Tab 5: Stay & Wi-Fi Info */}
+        {/* Tab 4: Stay & Wi-Fi Info */}
         {activeTab === 'info' && (
           <StayInfoCard
             stay={activeStay}
@@ -654,16 +544,10 @@ function StayPlanApp() {
         checklistItems={activeChecklistItems}
       />
 
-      <WalkthroughModal
-        isOpen={isWalkthroughOpen}
-        onClose={() => setIsWalkthroughOpen(false)}
-        onExploreDemo={handleExploreDemo}
-      />
-
       {/* Floating Save & Sync notification bar */}
       <SaveSyncFloatingBar />
 
-      {/* Lightweight Google Auth Gate Modal */}
+      {/* Lightweight PIN Verification Gate Modal */}
       <AuthModal />
     </div>
   );

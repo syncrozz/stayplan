@@ -12,7 +12,7 @@ export const SaveSyncFloatingBar: React.FC = () => {
     refreshFromCloud,
     clearSaveFeedback
   } = useStay();
-  const { isAuthenticated, isGuest } = useAuth();
+  const { isUnlocked } = useAuth();
 
   // Auto clear feedback after 5 seconds
   useEffect(() => {
@@ -62,7 +62,7 @@ export const SaveSyncFloatingBar: React.FC = () => {
   }
 
   // Active sync/saving floating pill (small, unobtrusive and accurate)
-  if (isAuthenticated && !isGuest && (isSyncing || syncStatus === 'SAVING' || syncStatus === 'SYNCING')) {
+  if (isUnlocked && (isSyncing || syncStatus === 'SAVING' || syncStatus === 'SYNCING')) {
     return (
       <div
         id="saving-sync-floating-pill"
@@ -77,7 +77,7 @@ export const SaveSyncFloatingBar: React.FC = () => {
   }
 
   // Persistent Error indicator with Retry
-  if (isAuthenticated && !isGuest && syncStatus === 'ERROR' && syncError) {
+  if (isUnlocked && syncStatus === 'ERROR' && syncError) {
     return (
       <div
         id="sync-error-floating-bar"
