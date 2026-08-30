@@ -157,10 +157,10 @@ function areChecklistListsEqual(a: ChecklistItem[], b: ChecklistItem[]): boolean
 
 // Storage cache keys for instant offline-first rendering
 const CACHE_KEYS = {
-  STAYS: 'stayplan_cached_stays_v3',
-  AGENDA: 'stayplan_cached_agenda_v3',
-  CHECKLIST: 'stayplan_cached_checklist_v3',
-  ACTIVE_ID: 'stayplan_cached_active_id_v3'
+  STAYS: 'stayplan_cached_stays_v4',
+  AGENDA: 'stayplan_cached_agenda_v4',
+  CHECKLIST: 'stayplan_cached_checklist_v4',
+  ACTIVE_ID: 'stayplan_cached_active_id_v4'
 };
 
 const getInitialCachedStays = (): Stay[] => {
@@ -213,7 +213,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userChecklistItems, setUserChecklistItems] = useState<ChecklistItem[]>(() => getInitialCachedChecklist());
   const [activeStayId, setActiveStayIdState] = useState<string | null>(() => getInitialCachedActiveStayId());
 
-  // Non-blocking loading indicator (never blocks whole UI)
+  // Non-blocking loading indicator
   const [isLoadingStays, setIsLoadingStays] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (navigator.onLine ? 'SYNCED' : 'OFFLINE'));
@@ -224,13 +224,14 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const staysListenerActiveRef = useRef<boolean>(false);
   const subcollectionsListenerActiveRef = useRef<boolean>(false);
   const hasPendingWritesRef = useRef<boolean>(false);
+  const hasCheckedSeedRef = useRef<boolean>(false);
 
   // Unsaved changes & feedback
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [unsavedCount, setUnsavedCount] = useState<number>(0);
   const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; timestamp: number } | null>(null);
 
-  const isPersonalMode = !!user && isUnlocked;
+  const isPersonalMode = true; // In multi-device shared sync, live cloud data is always active
 
   // Persist cache to local storage on changes for instantaneous subsequent visits
   useEffect(() => {
@@ -298,10 +299,6 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ----------------------------------------------------------------------------------
   const refreshFromCloud = useCallback(
     async (options?: { forceFetch?: boolean }): Promise<{ success: boolean; message: string; staysCount: number }> => {
-      if (!user) {
-        return { success: false, message: 'Sila buka kunci StayPlan untuk memuat data.', staysCount: 0 };
-      }
-
       if (!navigator.onLine) {
         setSyncStatus('OFFLINE');
         return { success: false, message: 'Peranti anda sedang di luar talian (Offline).', staysCount: userStays.length };
@@ -325,8 +322,8 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SYNCING');
         setSyncError(null);
 
-        // Fetch stays collection from Firestore
-        const staysColRef = collection(db, 'users', user.uid, 'stays');
+        // Fetch central stays collection from Firestore
+        const staysColRef = collection(db, 'stays');
         const staysSnap = await getDocs(staysColRef);
 
         const fetchedStays: Stay[] = [];
@@ -336,19 +333,21 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-        setUserStays((prev) => (areStaysEqual(prev, fetchedStays) ? prev : fetchedStays));
+        if (fetchedStays.length > 0) {
+          setUserStays((prev) => (areStaysEqual(prev, fetchedStays) ? prev : fetchedStays));
+        }
 
         // Determine active stay
         let currentActive = activeStayId;
         if (!currentActive || !fetchedStays.some((s) => s.id === currentActive)) {
-          currentActive = fetchedStays.length > 0 ? fetchedStays[0].id : null;
+          currentActive = fetchedStays.length > 0 ? fetchedStays[0].id : (userStays[0]?.id || null);
           setActiveStayIdState(currentActive);
         }
 
         // Parallel fetch for active stay's subcollections
         if (currentActive) {
-          const agendaColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'agendaItems');
-          const checklistColRef = collection(db, 'users', user.uid, 'stays', currentActive, 'checklistItems');
+          const agendaColRef = collection(db, 'stays', currentActive, 'agendaItems');
+          const checklistColRef = collection(db, 'stays', currentActive, 'checklistItems');
 
           const [agendaSnap, checklistSnap] = await Promise.all([
             getDocs(agendaColRef),
@@ -361,17 +360,21 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const fetchedChecklists: ChecklistItem[] = [];
           checklistSnap.forEach((d) => fetchedChecklists.push(d.data() as ChecklistItem));
 
-          setUserAgendaItems((prev) => {
-            const otherStays = prev.filter((i) => i.stayId !== currentActive);
-            const merged = [...otherStays, ...fetchedAgendas];
-            return areAgendaListsEqual(prev, merged) ? prev : merged;
-          });
+          if (fetchedAgendas.length > 0) {
+            setUserAgendaItems((prev) => {
+              const otherStays = prev.filter((i) => i.stayId !== currentActive);
+              const merged = [...otherStays, ...fetchedAgendas];
+              return areAgendaListsEqual(prev, merged) ? prev : merged;
+            });
+          }
 
-          setUserChecklistItems((prev) => {
-            const otherStays = prev.filter((i) => i.stayId !== currentActive);
-            const merged = [...otherStays, ...fetchedChecklists];
-            return areChecklistListsEqual(prev, merged) ? prev : merged;
-          });
+          if (fetchedChecklists.length > 0) {
+            setUserChecklistItems((prev) => {
+              const otherStays = prev.filter((i) => i.stayId !== currentActive);
+              const merged = [...otherStays, ...fetchedChecklists];
+              return areChecklistListsEqual(prev, merged) ? prev : merged;
+            });
+          }
         }
 
         const now = Date.now();
@@ -382,8 +385,8 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return {
           success: true,
-          message: `Berjaya memuat semula ${fetchedStays.length} stay dari Cloud.`,
-          staysCount: fetchedStays.length
+          message: `Berjaya menyelaraskan ${fetchedStays.length || userStays.length} stay dari Cloud.`,
+          staysCount: fetchedStays.length || userStays.length
         };
       } catch (err: any) {
         console.error('Refresh From Cloud Error:', err);
@@ -395,27 +398,18 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStayId, userStays.length]
+    [activeStayId, userStays]
   );
 
   const forceSyncWithCloud = refreshFromCloud;
 
   const saveAndSync = useCallback(
     async (customSuccessMsg?: string): Promise<{ success: boolean; message: string; staysCount: number }> => {
-      if (!user) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk sync data.');
-        return {
-          success: false,
-          message: 'Sila buka kunci StayPlan untuk sync.',
-          staysCount: 0
-        };
-      }
-
-      const res = await refreshFromCloud();
+      const res = await refreshFromCloud({ forceFetch: true });
       if (res.success) {
         setSaveFeedback({
           type: 'success',
-          message: customSuccessMsg || 'Data telah diselaraskan ke Cloud Firestore.',
+          message: customSuccessMsg || 'Data telah diselaraskan merentas semua peranti.',
           timestamp: Date.now()
         });
       } else {
@@ -427,40 +421,60 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return res;
     },
-    [user, refreshFromCloud, requireAuth]
+    [refreshFromCloud]
   );
 
+  // Helper to seed initial stay to central Firestore collection if completely empty
+  const seedDefaultStaysIfEmpty = useCallback(async () => {
+    if (hasCheckedSeedRef.current) return;
+    hasCheckedSeedRef.current = true;
+
+    try {
+      const staysColRef = collection(db, 'stays');
+      const staysSnap = await getDocs(staysColRef);
+
+      if (staysSnap.empty) {
+        // If empty, seed SHOWCASE_STAYS[0] and its items so all devices start on the same synced stay
+        const initialStay = SHOWCASE_STAYS[0];
+        const stayDocRef = doc(db, 'stays', initialStay.id);
+        const batch = writeBatch(db);
+
+        batch.set(stayDocRef, sanitizeForFirestore<Stay>(initialStay));
+
+        const initialAgendas = SHOWCASE_AGENDA_ITEMS.filter((a) => a.stayId === initialStay.id);
+        initialAgendas.forEach((item) => {
+          const itemRef = doc(collection(db, 'stays', initialStay.id, 'agendaItems'), item.id);
+          batch.set(itemRef, sanitizeForFirestore<AgendaItem>(item));
+        });
+
+        const initialChecklists = SHOWCASE_CHECKLIST_ITEMS.filter((c) => c.stayId === initialStay.id);
+        initialChecklists.forEach((item) => {
+          const itemRef = doc(collection(db, 'stays', initialStay.id, 'checklistItems'), item.id);
+          batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
+        });
+
+        await batch.commit();
+      }
+    } catch (seedErr) {
+      console.warn('Initial stay setup notice:', seedErr);
+    }
+  }, []);
+
   // ----------------------------------------------------------------------------------
-  // 2. DATA SUBSCRIPTION & HYDRATION (Authoritative Realtime Listener)
+  // 2. DATA SUBSCRIPTION & HYDRATION (Universal Realtime Multi-Device Listener)
   // ----------------------------------------------------------------------------------
   useEffect(() => {
-    if (!user) {
-      setUserStays([]);
-      setUserAgendaItems([]);
-      setUserChecklistItems([]);
-      setActiveStayIdState(SHOWCASE_STAYS[0]?.id || null);
-      setIsLoadingStays(false);
-      setSyncStatus('SYNCED');
-      staysListenerActiveRef.current = false;
-      return;
-    }
-
-    // Realtime background sync: updates state seamlessly without locking the interface
-    if (userStays.length === 0) {
-      setIsLoadingStays(false);
-    }
-
-    // Initial preference for active stay id if available
+    // Initial active stay id from local storage
     try {
-      const savedActivePref = localStorage.getItem(getUserActivePrefKey(user.uid));
+      const savedActivePref = localStorage.getItem(CACHE_KEYS.ACTIVE_ID);
       if (savedActivePref) {
         setActiveStayIdState(savedActivePref);
       }
     } catch {}
 
-    const staysColRef = collection(db, 'users', user.uid, 'stays');
+    const staysColRef = collection(db, 'stays');
 
-    // Realtime subscription to the owner's stays collection
+    // Realtime subscription to the central stays collection
     const unsubscribeStays = onSnapshot(
       staysColRef,
       (snapshot) => {
@@ -474,22 +488,24 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         fetchedStays.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-        // Diffing check: only set state if stays array actually changed
-        setUserStays((prev) => (areStaysEqual(prev, fetchedStays) ? prev : fetchedStays));
+        if (fetchedStays.length > 0) {
+          // Diffing check: only set state if stays array actually changed
+          setUserStays((prev) => (areStaysEqual(prev, fetchedStays) ? prev : fetchedStays));
 
-        setActiveStayIdState((prevActiveId) => {
-          if (fetchedStays.length === 0) {
-            return null;
-          }
-          if (prevActiveId && fetchedStays.some((s) => s.id === prevActiveId)) {
-            return prevActiveId;
-          }
-          const nextId = fetchedStays[0].id;
-          try {
-            localStorage.setItem(getUserActivePrefKey(user.uid), nextId);
-          } catch {}
-          return nextId;
-        });
+          setActiveStayIdState((prevActiveId) => {
+            if (prevActiveId && fetchedStays.some((s) => s.id === prevActiveId)) {
+              return prevActiveId;
+            }
+            const nextId = fetchedStays[0].id;
+            try {
+              localStorage.setItem(CACHE_KEYS.ACTIVE_ID, nextId);
+            } catch {}
+            return nextId;
+          });
+        } else {
+          // If Firestore is empty, seed initial stay
+          seedDefaultStaysIfEmpty();
+        }
 
         setIsLoadingStays(false);
         setSyncStatus(navigator.onLine ? 'SYNCED' : 'OFFLINE');
@@ -509,23 +525,19 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       staysListenerActiveRef.current = false;
       unsubscribeStays();
     };
-  }, [user]);
+  }, [seedDefaultStaysIfEmpty]);
 
   // ----------------------------------------------------------------------------------
   // 3. REALTIME SUBSCRIPTION FOR ACTIVE STAY'S SUBCOLLECTIONS (Agenda & Checklist)
   // ----------------------------------------------------------------------------------
   useEffect(() => {
-    if (!user || !activeStayId) {
-      if (!user) {
-        setUserAgendaItems([]);
-        setUserChecklistItems([]);
-      }
+    if (!activeStayId) {
       subcollectionsListenerActiveRef.current = false;
       return;
     }
 
-    const agendaRef = collection(db, 'users', user.uid, 'stays', activeStayId, 'agendaItems');
-    const checklistRef = collection(db, 'users', user.uid, 'stays', activeStayId, 'checklistItems');
+    const agendaRef = collection(db, 'stays', activeStayId, 'agendaItems');
+    const checklistRef = collection(db, 'stays', activeStayId, 'checklistItems');
 
     const unsubAgenda = onSnapshot(
       agendaRef,
@@ -536,11 +548,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const items: AgendaItem[] = [];
         snapshot.forEach((d) => items.push(d.data() as AgendaItem));
 
-        setUserAgendaItems((prev) => {
-          const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
-          const merged = [...otherStaysItems, ...items];
-          return areAgendaListsEqual(prev, merged) ? prev : merged;
-        });
+        if (items.length > 0 || !snapshot.empty) {
+          setUserAgendaItems((prev) => {
+            const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
+            const merged = [...otherStaysItems, ...items];
+            return areAgendaListsEqual(prev, merged) ? prev : merged;
+          });
+        }
         setLastSyncTime(Date.now());
       },
       (err) => {
@@ -554,11 +568,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const items: ChecklistItem[] = [];
         snapshot.forEach((d) => items.push(d.data() as ChecklistItem));
 
-        setUserChecklistItems((prev) => {
-          const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
-          const merged = [...otherStaysItems, ...items];
-          return areChecklistListsEqual(prev, merged) ? prev : merged;
-        });
+        if (items.length > 0 || !snapshot.empty) {
+          setUserChecklistItems((prev) => {
+            const otherStaysItems = prev.filter((i) => i.stayId !== activeStayId);
+            const merged = [...otherStaysItems, ...items];
+            return areChecklistListsEqual(prev, merged) ? prev : merged;
+          });
+        }
         setLastSyncTime(Date.now());
       },
       (err) => {
@@ -571,12 +587,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubAgenda();
       unsubChecklist();
     };
-  }, [user, activeStayId]);
+  }, [activeStayId]);
 
-  // Active stay data selectors
+  // Active stay data selectors (Synchronized across all devices)
   const stays = useMemo(() => {
-    return isPersonalMode ? userStays : SHOWCASE_STAYS;
-  }, [isPersonalMode, userStays]);
+    return userStays.length > 0 ? userStays : SHOWCASE_STAYS;
+  }, [userStays]);
 
   const activeStay = useMemo(() => {
     if (!stays || stays.length === 0) return null;
@@ -586,60 +602,52 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const activeAgendaItems = useMemo(() => {
     if (!activeStay) return [];
-    if (isPersonalMode) {
-      return userAgendaItems.filter((i) => i.stayId === activeStay.id);
-    }
+    const items = userAgendaItems.filter((i) => i.stayId === activeStay.id);
+    if (items.length > 0) return items;
     return SHOWCASE_AGENDA_ITEMS.filter((i) => i.stayId === activeStay.id);
-  }, [isPersonalMode, activeStay, userAgendaItems]);
+  }, [activeStay, userAgendaItems]);
 
   const activeChecklistItems = useMemo(() => {
     if (!activeStay) return [];
-    if (isPersonalMode) {
-      return userChecklistItems.filter((i) => i.stayId === activeStay.id);
-    }
+    const items = userChecklistItems.filter((i) => i.stayId === activeStay.id);
+    if (items.length > 0) return items;
     return SHOWCASE_CHECKLIST_ITEMS.filter((i) => i.stayId === activeStay.id);
-  }, [isPersonalMode, activeStay, userChecklistItems]);
+  }, [activeStay, userChecklistItems]);
 
   const setActiveStayId = (id: string) => {
     setActiveStayIdState(id);
-    if (user) {
-      try {
-        localStorage.setItem(getUserActivePrefKey(user.uid), id);
-      } catch {}
-    }
+    try {
+      localStorage.setItem(CACHE_KEYS.ACTIVE_ID, id);
+    } catch {}
   };
 
   // ----------------------------------------------------------------------------------
-  // 4. AWAITED FIRESTORE WRITE MUTATIONS (Server-Authoritative)
+  // 4. AWAITED FIRESTORE WRITE MUTATIONS (Server-Authoritative Realtime Sync)
   // ----------------------------------------------------------------------------------
 
   const addStay = useCallback(
     async (newStayData: Omit<Stay, 'id' | 'createdAt' | 'updatedAt' | 'userId'>): Promise<string> => {
-      if (!user) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk mencipta Stay.');
-        return '';
-      }
-
       const stayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const now = Date.now();
+      const currentUid = user?.uid || 'admin_device';
       const newStay: Stay = {
         ...newStayData,
         id: stayId,
-        userId: user.uid,
+        userId: currentUid,
         createdAt: now,
         updatedAt: now
       };
 
       const starterChecklist: ChecklistItem[] = [
-        { id: `chk_${now}_1`, stayId, userId: user.uid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false, createdAt: now, updatedAt: now },
-        { id: `chk_${now}_2`, stayId, userId: user.uid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false, createdAt: now, updatedAt: now },
-        { id: `chk_${now}_3`, stayId, userId: user.uid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false, createdAt: now, updatedAt: now }
+        { id: `chk_${now}_1`, stayId, userId: currentUid, category: 'essentials', text: 'Pakaian & pakaian solat', isCompleted: false, createdAt: now, updatedAt: now },
+        { id: `chk_${now}_2`, stayId, userId: currentUid, category: 'essentials', text: 'Pengecas telefon & ubatan harian', isCompleted: false, createdAt: now, updatedAt: now },
+        { id: `chk_${now}_3`, stayId, userId: currentUid, category: 'food_gifts', text: 'Buah tangan / bekalan makanan', isCompleted: false, createdAt: now, updatedAt: now }
       ];
 
       const starterAgenda: AgendaItem = {
         id: `agn_${now}_1`,
         stayId,
-        userId: user.uid,
+        userId: currentUid,
         dayNumber: 1,
         timeSlot: 'afternoon',
         timeSpecific: '03:00 PM',
@@ -661,17 +669,17 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const stayDocRef = doc(db, 'users', user.uid, 'stays', stayId);
+        const stayDocRef = doc(db, 'stays', stayId);
         const batch = writeBatch(db);
 
         batch.set(stayDocRef, sanitizeForFirestore<Stay>(newStay));
 
         starterChecklist.forEach((item) => {
-          const itemRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'checklistItems'), item.id);
+          const itemRef = doc(collection(db, 'stays', stayId, 'checklistItems'), item.id);
           batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
         });
 
-        const agendaRef = doc(collection(db, 'users', user.uid, 'stays', stayId, 'agendaItems'), starterAgenda.id);
+        const agendaRef = doc(collection(db, 'stays', stayId, 'agendaItems'), starterAgenda.id);
         batch.set(agendaRef, sanitizeForFirestore<AgendaItem>(starterAgenda));
 
         await batch.commit();
@@ -690,16 +698,11 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return stayId;
     },
-    [user, requireAuth]
+    [user]
   );
 
   const updateStay = useCallback(
     async (id: string, updates: Partial<Stay>) => {
-      if (!user) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk mengemas kini Stay.');
-        return;
-      }
-
       const now = Date.now();
       const sanitizedUpdates = sanitizeForFirestore<Partial<Stay>>({
         ...updates,
@@ -713,7 +716,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const stayRef = doc(db, 'users', user.uid, 'stays', id);
+        const stayRef = doc(db, 'stays', id);
         await updateDoc(stayRef, sanitizedUpdates);
 
         setSyncStatus('SYNCED');
@@ -728,16 +731,11 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, requireAuth]
+    []
   );
 
   const deleteStay = useCallback(
     async (id: string) => {
-      if (!user) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memadam Stay.');
-        return;
-      }
-
       // Optimistic UI removal
       setUserStays((prev) => {
         const next = prev.filter((s) => s.id !== id);
@@ -752,13 +750,13 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const agendaSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'agendaItems'));
-        const checklistSnap = await getDocs(collection(db, 'users', user.uid, 'stays', id, 'checklistItems'));
+        const agendaSnap = await getDocs(collection(db, 'stays', id, 'agendaItems'));
+        const checklistSnap = await getDocs(collection(db, 'stays', id, 'checklistItems'));
 
         const batch = writeBatch(db);
         agendaSnap.forEach((d) => batch.delete(d.ref));
         checklistSnap.forEach((d) => batch.delete(d.ref));
-        batch.delete(doc(db, 'users', user.uid, 'stays', id));
+        batch.delete(doc(db, 'stays', id));
 
         await batch.commit();
 
@@ -774,47 +772,43 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, requireAuth]
+    []
   );
 
   const duplicateStay = useCallback(
     async (id: string) => {
-      if (!user) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menduplikasi Stay.');
-        return;
-      }
-
-      const target = userStays.find((s) => s.id === id);
+      const target = userStays.find((s) => s.id === id) || SHOWCASE_STAYS.find((s) => s.id === id);
       if (!target) return;
 
       const newStayId = `stay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const now = Date.now();
+      const currentUid = user?.uid || 'admin_device';
       const duplicatedStay: Stay = {
         ...target,
         id: newStayId,
-        userId: user.uid,
+        userId: currentUid,
         title: `${target.title} (Salinan)`,
         createdAt: now,
         updatedAt: now
       };
 
       const sourceAgendas = userAgendaItems.filter((a) => a.stayId === id);
-      const dupAgendas: AgendaItem[] = sourceAgendas.map((a, i) => ({
+      const dupAgendas: AgendaItem[] = (sourceAgendas.length > 0 ? sourceAgendas : SHOWCASE_AGENDA_ITEMS.filter((a) => a.stayId === id)).map((a, i) => ({
         ...a,
         id: `agn_${now}_${i}`,
         stayId: newStayId,
-        userId: user.uid,
+        userId: currentUid,
         isCompleted: false,
         createdAt: now,
         updatedAt: now
       }));
 
       const sourceChecklists = userChecklistItems.filter((c) => c.stayId === id);
-      const dupChecklists: ChecklistItem[] = sourceChecklists.map((c, i) => ({
+      const dupChecklists: ChecklistItem[] = (sourceChecklists.length > 0 ? sourceChecklists : SHOWCASE_CHECKLIST_ITEMS.filter((c) => c.stayId === id)).map((c, i) => ({
         ...c,
         id: `chk_${now}_${i}`,
         stayId: newStayId,
-        userId: user.uid,
+        userId: currentUid,
         isCompleted: false,
         createdAt: now,
         updatedAt: now
@@ -831,16 +825,16 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(true);
 
         const batch = writeBatch(db);
-        const stayRef = doc(db, 'users', user.uid, 'stays', newStayId);
+        const stayRef = doc(db, 'stays', newStayId);
         batch.set(stayRef, sanitizeForFirestore<Stay>(duplicatedStay));
 
         dupAgendas.forEach((item) => {
-          const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'agendaItems'), item.id);
+          const itemRef = doc(collection(db, 'stays', newStayId, 'agendaItems'), item.id);
           batch.set(itemRef, sanitizeForFirestore<AgendaItem>(item));
         });
 
         dupChecklists.forEach((item) => {
-          const itemRef = doc(collection(db, 'users', user.uid, 'stays', newStayId, 'checklistItems'), item.id);
+          const itemRef = doc(collection(db, 'stays', newStayId, 'checklistItems'), item.id);
           batch.set(itemRef, sanitizeForFirestore<ChecklistItem>(item));
         });
 
@@ -858,23 +852,23 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, userStays, userAgendaItems, userChecklistItems, requireAuth]
+    [user, userStays, userAgendaItems, userChecklistItems]
   );
 
   const addAgendaItem = useCallback(
     async (item: Omit<AgendaItem, 'id' | 'userId'>): Promise<string> => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menambah aktiviti.');
+      if (!activeStay) {
         return '';
       }
 
       const newItemId = `agn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const now = Date.now();
+      const currentUid = user?.uid || 'admin_device';
       const newItem: AgendaItem = {
         ...item,
         id: newItemId,
         stayId: activeStay.id,
-        userId: user.uid,
+        userId: currentUid,
         createdAt: now,
         updatedAt: now
       };
@@ -886,7 +880,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems');
+        const colRef = collection(db, 'stays', activeStay.id, 'agendaItems');
         const docRef = doc(colRef, newItemId);
         await setDoc(docRef, sanitizeForFirestore<AgendaItem>(newItem));
 
@@ -904,15 +898,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newItemId;
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay]
   );
 
   const updateAgendaItem = useCallback(
     async (id: string, updates: Partial<AgendaItem>) => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk mengemas kini aktiviti.');
-        return;
-      }
+      if (!activeStay) return;
 
       const now = Date.now();
       const sanitizedUpdates = sanitizeForFirestore<Partial<AgendaItem>>({
@@ -927,7 +918,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+        const itemRef = doc(db, 'stays', activeStay.id, 'agendaItems', id);
         await updateDoc(itemRef, sanitizedUpdates);
 
         setSyncStatus('SYNCED');
@@ -942,12 +933,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, requireAuth]
+    [activeStay]
   );
 
   const batchUpdateAgendaItems = useCallback(
     async (updatesList: Array<{ id: string; updates: Partial<AgendaItem> }>) => {
-      if (!user || !activeStay || updatesList.length === 0) return;
+      if (!activeStay || updatesList.length === 0) return;
 
       const now = Date.now();
       const updateMap = new Map(updatesList.map((u) => [u.id, u.updates]));
@@ -966,7 +957,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const batch = writeBatch(db);
         for (const item of updatesList) {
-          const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', item.id);
+          const itemRef = doc(db, 'stays', activeStay.id, 'agendaItems', item.id);
           batch.update(itemRef, sanitizeForFirestore<Partial<AgendaItem>>({ ...item.updates, updatedAt: now }));
         }
         await batch.commit();
@@ -983,15 +974,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay]
+    [activeStay]
   );
 
   const deleteAgendaItem = useCallback(
     async (id: string) => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memadam aktiviti.');
-        return;
-      }
+      if (!activeStay) return;
 
       // Optimistic removal
       setUserAgendaItems((prev) => prev.filter((a) => a.id !== id));
@@ -1000,7 +988,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
+        const itemRef = doc(db, 'stays', activeStay.id, 'agendaItems', id);
         await deleteDoc(itemRef);
 
         setSyncStatus('SYNCED');
@@ -1015,30 +1003,34 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, requireAuth]
+    [activeStay]
   );
 
   const toggleAgendaComplete = useCallback(
     async (id: string) => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menanda aktiviti siap.');
-        return;
-      }
+      if (!activeStay) return;
 
-      const existing = userAgendaItems.find((i) => i.id === id);
+      const existing = userAgendaItems.find((i) => i.id === id) || SHOWCASE_AGENDA_ITEMS.find((i) => i.id === id);
       if (!existing) return;
       const nextCompleted = !existing.isCompleted;
       const now = Date.now();
 
       // Optimistic update
-      setUserAgendaItems((prev) => prev.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted, updatedAt: now } : a)));
+      setUserAgendaItems((prev) => {
+        const found = prev.some((a) => a.id === id);
+        if (found) {
+          return prev.map((a) => (a.id === id ? { ...a, isCompleted: nextCompleted, updatedAt: now } : a));
+        } else {
+          return [...prev, { ...existing, isCompleted: nextCompleted, updatedAt: now }];
+        }
+      });
 
       try {
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'agendaItems', id);
-        await updateDoc(itemRef, { isCompleted: nextCompleted, updatedAt: now });
+        const itemRef = doc(db, 'stays', activeStay.id, 'agendaItems', id);
+        await setDoc(itemRef, { ...existing, isCompleted: nextCompleted, updatedAt: now }, { merge: true });
 
         setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
@@ -1052,23 +1044,23 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, userAgendaItems, requireAuth]
+    [activeStay, userAgendaItems]
   );
 
   const addChecklistItem = useCallback(
     async (item: Omit<ChecklistItem, 'id' | 'userId'>): Promise<string> => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menambah senarai semak.');
+      if (!activeStay) {
         return '';
       }
 
       const newItemId = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const now = Date.now();
+      const currentUid = user?.uid || 'admin_device';
       const newItem: ChecklistItem = {
         ...item,
         id: newItemId,
         stayId: activeStay.id,
-        userId: user.uid,
+        userId: currentUid,
         createdAt: now,
         updatedAt: now
       };
@@ -1080,7 +1072,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const colRef = collection(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems');
+        const colRef = collection(db, 'stays', activeStay.id, 'checklistItems');
         const docRef = doc(colRef, newItemId);
         await setDoc(docRef, sanitizeForFirestore<ChecklistItem>(newItem));
 
@@ -1098,30 +1090,34 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return newItemId;
     },
-    [user, activeStay, requireAuth]
+    [user, activeStay]
   );
 
   const toggleChecklistComplete = useCallback(
     async (id: string) => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk menanda senarai semak.');
-        return;
-      }
+      if (!activeStay) return;
 
-      const existing = userChecklistItems.find((i) => i.id === id);
+      const existing = userChecklistItems.find((i) => i.id === id) || SHOWCASE_CHECKLIST_ITEMS.find((i) => i.id === id);
       if (!existing) return;
       const nextCompleted = !existing.isCompleted;
       const now = Date.now();
 
       // Optimistic update
-      setUserChecklistItems((prev) => prev.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted, updatedAt: now } : c)));
+      setUserChecklistItems((prev) => {
+        const found = prev.some((c) => c.id === id);
+        if (found) {
+          return prev.map((c) => (c.id === id ? { ...c, isCompleted: nextCompleted, updatedAt: now } : c));
+        } else {
+          return [...prev, { ...existing, isCompleted: nextCompleted, updatedAt: now }];
+        }
+      });
 
       try {
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
-        await updateDoc(itemRef, { isCompleted: nextCompleted, updatedAt: now });
+        const itemRef = doc(db, 'stays', activeStay.id, 'checklistItems', id);
+        await setDoc(itemRef, { ...existing, isCompleted: nextCompleted, updatedAt: now }, { merge: true });
 
         setSyncStatus('SYNCED');
         setLastSyncTime(Date.now());
@@ -1135,15 +1131,12 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, userChecklistItems, requireAuth]
+    [activeStay, userChecklistItems]
   );
 
   const deleteChecklistItem = useCallback(
     async (id: string) => {
-      if (!user || !activeStay) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memadam senarai semak.');
-        return;
-      }
+      if (!activeStay) return;
 
       // Optimistic removal
       setUserChecklistItems((prev) => prev.filter((c) => c.id !== id));
@@ -1152,7 +1145,7 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncStatus('SAVING');
         setIsSyncing(true);
 
-        const itemRef = doc(db, 'users', user.uid, 'stays', activeStay.id, 'checklistItems', id);
+        const itemRef = doc(db, 'stays', activeStay.id, 'checklistItems', id);
         await deleteDoc(itemRef);
 
         setSyncStatus('SYNCED');
@@ -1167,16 +1160,11 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSyncing(false);
       }
     },
-    [user, activeStay, requireAuth]
+    [activeStay]
   );
 
   const createFromStarterTemplate = useCallback(
     async (templateType: StayType): Promise<string> => {
-      if (!user) {
-        requireAuth(() => {}, 'Sila buka kunci StayPlan untuk memilih templat.');
-        return '';
-      }
-
       let title = 'Pelan Percutian Saya';
       let durationDays = 3;
       let location = 'Destinasi Pilihan';
@@ -1209,22 +1197,22 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         houseRules: []
       });
     },
-    [user, addStay, requireAuth]
+    [addStay]
   );
 
   const exportDataJson = useCallback((): string => {
     return JSON.stringify(
       {
         userUid: user?.uid || null,
-        stays: isPersonalMode ? userStays : SHOWCASE_STAYS,
-        agendaItems: isPersonalMode ? userAgendaItems : SHOWCASE_AGENDA_ITEMS,
-        checklistItems: isPersonalMode ? userChecklistItems : SHOWCASE_CHECKLIST_ITEMS,
+        stays,
+        agendaItems: userAgendaItems.length > 0 ? userAgendaItems : SHOWCASE_AGENDA_ITEMS,
+        checklistItems: userChecklistItems.length > 0 ? userChecklistItems : SHOWCASE_CHECKLIST_ITEMS,
         activeStayId
       },
       null,
       2
     );
-  }, [user, isPersonalMode, userStays, userAgendaItems, userChecklistItems, activeStayId]);
+  }, [user, stays, userAgendaItems, userChecklistItems, activeStayId]);
 
   return (
     <StayContext.Provider
@@ -1233,9 +1221,9 @@ export const StayProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeStay,
         activeStayId,
         setActiveStayId,
-        agendaItems: isPersonalMode ? userAgendaItems : SHOWCASE_AGENDA_ITEMS,
+        agendaItems: userAgendaItems.length > 0 ? userAgendaItems : SHOWCASE_AGENDA_ITEMS,
         activeAgendaItems,
-        checklistItems: isPersonalMode ? userChecklistItems : SHOWCASE_CHECKLIST_ITEMS,
+        checklistItems: userChecklistItems.length > 0 ? userChecklistItems : SHOWCASE_CHECKLIST_ITEMS,
         activeChecklistItems,
         isPersonalMode,
         isLoadingStays,
